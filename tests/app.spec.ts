@@ -73,14 +73,83 @@ test("invalid interval disables export and invalid backups show an error", async
   await expect(
     page.getByRole("button", { name: "Exportar PDF" }),
   ).toBeDisabled();
-  await page
-    .locator('input[accept="application/json,.json"]')
-    .setInputFiles({
-      name: "bad.json",
-      mimeType: "application/json",
-      buffer: Buffer.from('{"version":1}'),
-    });
+  await page.locator('input[accept="application/json,.json"]').setInputFiles({
+    name: "bad.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"version":1}'),
+  });
   await expect(
     page.getByRole("alert").filter({ hasText: "Esta copia no es válida" }),
   ).toBeVisible();
+});
+
+test("switch views, navigate facing pages and write on the right page", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Desde", { exact: true }).fill("2028-03-06");
+  await page.getByLabel("Hasta", { exact: true }).fill("2028-03-19");
+  await expect(page.locator(".paper")).toHaveCount(1);
+  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
+  await expect(page.locator(".paper")).toHaveCount(2);
+  await expect(
+    page.getByAltText("Vista previa de la página 2", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByAltText("Vista previa de la página 3", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Escribir el 2028-03-09", exact: true })
+    .click();
+  await page.getByLabel("Notas del día").fill("Nota en la página derecha");
+  await expect(page.getByLabel("Ir a una fecha")).toHaveValue("2028-03-09");
+  await page.getByRole("button", { name: "Una página", exact: true }).click();
+  await expect(page.locator(".paper")).toHaveCount(1);
+  await expect(
+    page.getByAltText("Vista previa de la página 3", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Página siguiente", exact: true })
+    .click();
+  await expect(
+    page.getByAltText("Vista previa de la página 4", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByAltText("Vista previa de la página 5", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/double-desktop.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Página siguiente", exact: true })
+    .click();
+  await expect(page.locator(".paper")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Página siguiente", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("Ir a página").selectOption("0");
+  await expect(page.locator(".paper")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Página anterior", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Página siguiente", exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".paper")).toHaveCount(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+  const papers = await page.locator(".paper").all();
+  const left = await papers[0].boundingBox(),
+    right = await papers[1].boundingBox();
+  expect(left!.y).toBe(right!.y);
+  expect(right!.x).toBeGreaterThan(left!.x);
+  await page.screenshot({
+    path: "test-results/double-mobile.png",
+    fullPage: true,
+  });
 });

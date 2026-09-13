@@ -29,6 +29,7 @@ import { download, exportPDF } from "./export";
 import "./App.css";
 const steps = ["Calendario", "Diseños", "Impresión"];
 function App() {
+  const [view, setView] = useState<"single" | "double">("single");
   const [project, update] = useState<Project>(defaults);
   const [storedProject, setStoredProject] = useState<Project | null>(null);
   const [loaded, setLoaded] = useState(false),
@@ -73,6 +74,18 @@ function App() {
     actualIndex = Math.min(index, Math.max(0, all.length - 1)),
     page = all[actualIndex],
     dateError = validate(project);
+  const spreadStart =
+    actualIndex === 0
+      ? 0
+      : actualIndex % 2 === 0
+        ? actualIndex - 1
+        : actualIndex;
+  const viewStart = view === "double" ? spreadStart : actualIndex;
+  const visiblePages = all.slice(
+    viewStart,
+    viewStart + (view === "double" && viewStart > 0 ? 2 : 1),
+  );
+  const viewEnd = viewStart + visiblePages.length - 1;
   const activeDay =
     selected && page?.days.includes(selected)
       ? selected
@@ -611,64 +624,102 @@ function App() {
                     : "Semana en dos caras"}
               </span>
             </div>
-            <select
-              aria-label="Ir a página"
-              value={actualIndex}
-              onChange={(e) => go(+e.target.value)}
-            >
-              {all.map((p, i) => (
-                <option key={p.id} value={i}>
-                  {i + 1} ·{" "}
-                  {p.kind === "front"
-                    ? "Portada"
-                    : p.kind === "back"
-                      ? "Contraportada"
-                      : p.kind === "blank"
-                        ? "En blanco"
-                        : format(p.days.find(Boolean) || `${p.month}-01`, {
-                            day: "numeric",
-                            month: "short",
-                          }) +
-                          (p.side === "right"
-                            ? " · derecha"
-                            : p.side === "left"
-                              ? " · izquierda"
-                              : "")}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="canvas">
-            {page ? (
-              <div className="paper">
-                <img
-                  alt={`Vista previa de la página ${actualIndex + 1}`}
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(project, page))}`}
-                />
-                {mode === "write" &&
-                  page.kind === "inside" &&
-                  dayBoxes(project, page)
-                    .filter(
-                      (b) => b.day >= project.start && b.day <= project.end,
-                    )
-                    .map((b) => (
-                      <button
-                        className={`day-hit ${activeDay === b.day ? "selected" : ""}`}
-                        key={b.day}
-                        aria-label={`Escribir el ${b.day}`}
-                        style={{
-                          left: `${(b.x / 740) * 100}%`,
-                          top: `${(b.y / 1050) * 100}%`,
-                          width: `${(b.width / 740) * 100}%`,
-                          height: `${(b.height / 1050) * 100}%`,
-                        }}
-                        onClick={() => {
-                          select(b.day);
-                          setMobileOpen(true);
-                        }}
-                      />
-                    ))}
+            <div className="preview-actions">
+              <div
+                className="view-toggle"
+                role="group"
+                aria-label="Páginas visibles"
+              >
+                <button
+                  aria-pressed={view === "single"}
+                  onClick={() => setView("single")}
+                >
+                  Una página
+                </button>
+                <button
+                  aria-pressed={view === "double"}
+                  onClick={() => setView("double")}
+                >
+                  Dos páginas
+                </button>
               </div>
+              <select
+                aria-label="Ir a página"
+                value={actualIndex}
+                onChange={(e) => go(+e.target.value)}
+              >
+                {all.map((p, i) => (
+                  <option key={p.id} value={i}>
+                    {i + 1} ·{" "}
+                    {p.kind === "front"
+                      ? "Portada"
+                      : p.kind === "back"
+                        ? "Contraportada"
+                        : p.kind === "blank"
+                          ? "En blanco"
+                          : format(p.days.find(Boolean) || `${p.month}-01`, {
+                              day: "numeric",
+                              month: "short",
+                            }) +
+                            (p.side === "right"
+                              ? " · derecha"
+                              : p.side === "left"
+                                ? " · izquierda"
+                                : "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className={`canvas ${view === "double" ? "double-view" : ""}`}>
+            {page ? (
+              visiblePages.map((visiblePage, offset) => {
+                const pageIndex = viewStart + offset;
+                return (
+                  <div className="page-view" key={visiblePage.id}>
+                    {view === "double" && (
+                      <button
+                        className="page-select"
+                        aria-pressed={actualIndex === pageIndex}
+                        onClick={() => go(pageIndex)}
+                      >
+                        Página {pageIndex + 1}
+                      </button>
+                    )}
+                    <div className="paper">
+                      <img
+                        alt={`Vista previa de la página ${pageIndex + 1}`}
+                        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(project, visiblePage))}`}
+                      />
+                      {mode === "write" &&
+                        visiblePage.kind === "inside" &&
+                        dayBoxes(project, visiblePage)
+                          .filter(
+                            (b) =>
+                              b.day >= project.start && b.day <= project.end,
+                          )
+                          .map((b) => (
+                            <button
+                              className={`day-hit ${activeDay === b.day ? "selected" : ""}`}
+                              key={b.day}
+                              aria-label={`Escribir el ${b.day}`}
+                              style={{
+                                left: `${(b.x / 740) * 100}%`,
+                                top: `${(b.y / 1050) * 100}%`,
+                                width: `${(b.width / 740) * 100}%`,
+                                height: `${(b.height / 1050) * 100}%`,
+                              }}
+                              onClick={() => {
+                                setIndex(pageIndex);
+                                select(b.day);
+                                setMobileOpen(true);
+                              }}
+                            />
+                          ))}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <p className="empty">
                 Configura un intervalo de fechas válido para ver tu agenda.
@@ -678,19 +729,28 @@ function App() {
           <div className="page-controls">
             <button
               className="icon"
-              disabled={actualIndex === 0 || !page}
-              onClick={() => go(actualIndex - 1)}
+              disabled={viewStart === 0 || !page}
+              onClick={() =>
+                go(
+                  view === "double"
+                    ? Math.max(0, viewStart - 2)
+                    : actualIndex - 1,
+                )
+              }
               aria-label="Página anterior"
             >
               <ChevronLeft size={20} />
             </button>
             <span>
-              Página {page ? actualIndex + 1 : 0} de {all.length}
+              {visiblePages.length === 2
+                ? `Páginas ${viewStart + 1}–${viewEnd + 1}`
+                : `Página ${page ? actualIndex + 1 : 0}`}{" "}
+              de {all.length}
             </span>
             <button
               className="icon"
-              disabled={actualIndex >= all.length - 1}
-              onClick={() => go(actualIndex + 1)}
+              disabled={viewEnd >= all.length - 1}
+              onClick={() => go(viewEnd + 1)}
               aria-label="Página siguiente"
             >
               <ChevronRight size={20} />
@@ -700,7 +760,10 @@ function App() {
             <div className="page-override">
               <label>
                 <Upload size={15} />
-                Diseño solo para esta página
+                Diseño solo para{" "}
+                {view === "double"
+                  ? `la página ${actualIndex + 1}`
+                  : "esta página"}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"

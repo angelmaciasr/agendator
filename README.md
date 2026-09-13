@@ -19,7 +19,8 @@ Abre la dirección que muestra Vite (normalmente http://localhost:5173).
 - Un día por página, una semana por página o una semana en dos caras (lunes–miércoles / jueves–domingo).
 - Las semanas se cortan al cambiar de mes. Las posiciones del otro mes quedan completamente en blanco y el mes siguiente empieza en otra página o pareja de caras.
 - Portada, contraportada, plantilla interior, plantilla derecha y diseño individual para cualquier página. Admite PNG, JPEG y WebP de hasta 15 MB por imagen.
-- Vista previa, navegación por página y fecha, color y márgenes ajustables.
+- Vista previa de una página o dos enfrentadas, con navegación por página o pareja; portada y contraportada se muestran solas. Se puede seleccionar y escribir en cualquiera de las caras.
+- Navegación por fecha, color y márgenes ajustables.
 - Escritura por día y almacenamiento local en IndexedDB; copias JSON para restaurar o transferir la agenda.
 - PDF A4 o A5 a 300 ppp, con o sin notas, con contraportada en página par para impresión a doble cara.
 - Interfaz adaptable a móvil; el botón de menú abre la configuración.
