@@ -16,6 +16,7 @@ Abre la dirección que muestra Vite (normalmente http://localhost:5173). La inst
 ## Crear una agenda con tus plantillas
 
 1. Elige el intervalo de fechas y el formato: día por página, semana por página o semana en dos caras.
+   Puedes activar **Añadir vista mensual al inicio de cada mes**: inserta un calendario completo de lunes a domingo antes de las páginas de cada mes, incluido el primero. Los días fuera del intervalo aparecen en gris. En formato de dos caras se añade una cara en blanco junto a cada vista mensual para conservar las parejas de plantillas. Esta vista utiliza un diseño de cuadrícula generado por la aplicación.
 2. Sube las imágenes PNG, JPEG o WebP (hasta 15 MB cada una). En dos caras, carga una plantilla izquierda y otra derecha. Portada y contraportada son opcionales.
 3. La aplicación reconoce los días y sus números, el mes y las zonas delimitadas por líneas. Para las plantillas de cuatro días a la izquierda y tres a la derecha, selecciona automáticamente lunes–jueves / viernes–domingo.
 4. Revisa la vista previa. En **Ajustar fechas** puedes corregir las posiciones dibujando un rectángulo sobre el texto original, ajustar tamaño, tipografía y colores, y añadir campos que no se hayan reconocido. Las zonas de día delimitan qué se deja en blanco al cortar un mes.

@@ -89,6 +89,39 @@ test("uploaded templates keep their artwork, replace dates, persist and export",
   );
   expect(doc.getPageCount()).toBe(14);
   expect(doc.getPage(0).getWidth()).toBeCloseTo(419.528);
+  await page.getByRole("button", { name: "1 Calendario" }).click();
+  await page.getByLabel("Añadir vista mensual al inicio de cada mes").check();
+  await page.getByLabel("Ir a página").selectOption("1");
+  const monthly = await source(page, 2);
+  expect(monthly).toContain("septiembre</text>");
+  expect(monthly).toContain("2026</text>");
+  expect(monthly).toContain("Domingo</text>");
+  expect(monthly).not.toContain("<image");
+  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
+  expect(await source(page, 3)).not.toContain("<image");
+  await expect(
+    page.getByRole("option").filter({ hasText: "Vista mensual" }),
+  ).toHaveCount(2);
+  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByLabel("Añadir vista mensual al inicio de cada mes"),
+  ).toBeChecked();
+  await page.screenshot({
+    path: "test-results/monthly-preview.png",
+    fullPage: true,
+  });
+  const monthlyDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar PDF", exact: true }).click();
+  await (await monthlyDownload).saveAs("test-results/monthly-calendar.pdf");
+  const monthlyDoc = await PDFDocument.load(
+    await readFile("test-results/monthly-calendar.pdf"),
+  );
+  expect(monthlyDoc.getPageCount()).toBe(18);
+  await page.getByLabel("Añadir vista mensual al inicio de cada mes").uncheck();
+  await expect(
+    page.getByRole("option").filter({ hasText: "Vista mensual" }),
+  ).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
@@ -131,13 +164,11 @@ test("single and double page navigation, invalid dates and backup validation", a
   await expect(
     page.getByRole("button", { name: "Exportar PDF" }),
   ).toBeDisabled();
-  await page
-    .locator('input[accept="application/json,.json"]')
-    .setInputFiles({
-      name: "bad.json",
-      mimeType: "application/json",
-      buffer: Buffer.from('{"version":1}'),
-    });
+  await page.locator('input[accept="application/json,.json"]').setInputFiles({
+    name: "bad.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"version":1}'),
+  });
   await expect(
     page.getByRole("alert").filter({ hasText: "Esta copia no es válida" }),
   ).toBeVisible();

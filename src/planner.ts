@@ -14,6 +14,7 @@ export type Project = {
   end: string;
   layout: Layout;
   spreadSplit?: 3 | 4;
+  monthlyOverview?: boolean;
   size: "A5" | "A4";
   color: string;
   margin: number;
@@ -26,7 +27,7 @@ export type Project = {
 };
 export type Page = {
   id: string;
-  kind: "front" | "back" | "inside" | "blank";
+  kind: "front" | "back" | "inside" | "blank" | "monthly";
   days: string[];
   side?: "left" | "right";
   month?: string;
@@ -39,6 +40,7 @@ export const defaults = (): Project => ({
   end: `${new Date().getFullYear()}-12-31`,
   layout: "spread",
   spreadSplit: 3,
+  monthlyOverview: false,
   size: "A5",
   color: "#b45309",
   margin: 9,
@@ -73,7 +75,7 @@ export function validate(p: Project) {
 }
 export function pages(p: Project): Page[] {
   if (validate(p)) return [];
-  const out: Page[] = [{ id: "front", kind: "front", days: [] }];
+  let out: Page[] = [{ id: "front", kind: "front", days: [] }];
   if (p.layout === "day") {
     for (let d = p.start; d <= p.end; d = addDays(d, 1))
       out.push({ id: d, kind: "inside", days: [d] });
@@ -112,23 +114,50 @@ export function pages(p: Project): Page[] {
       }
     }
   }
+  if (p.monthlyOverview) {
+    const expanded: Page[] = [out[0]];
+    let previousMonth = "";
+    for (const page of out.slice(1)) {
+      const month = page.month || page.days[0].slice(0, 7);
+      if (month !== previousMonth) {
+        expanded.push({
+          id: `monthly-${month}`,
+          kind: "monthly",
+          month,
+          days: [],
+        });
+        // Insert a complete pair so the following left/right templates stay facing.
+        if (p.layout === "spread")
+          expanded.push({
+            id: `monthly-blank-${month}`,
+            kind: "blank",
+            days: [],
+          });
+        previousMonth = month;
+      }
+      expanded.push(page);
+    }
+    out = expanded;
+  }
   // Back cover is always an even PDF page for duplex printing.
   if (out.length % 2 === 0) out.push({ id: "blank", kind: "blank", days: [] });
   out.push({ id: "back", kind: "back", days: [] });
   return out;
 }
 export const assetFor = (p: Project, page: Page) =>
-  p.overrides[page.id] ||
-  p.assets[
-    page.kind === "front"
-      ? "front"
-      : page.kind === "back"
-        ? "back"
-        : page.side === "right"
-          ? "right"
-          : "inside"
-  ] ||
-  (page.kind === "inside" ? p.assets.inside : undefined);
+  page.kind === "blank" || page.kind === "monthly"
+    ? undefined
+    : p.overrides[page.id] ||
+      p.assets[
+        page.kind === "front"
+          ? "front"
+          : page.kind === "back"
+            ? "back"
+            : page.side === "right"
+              ? "right"
+              : "inside"
+      ] ||
+      (page.kind === "inside" ? p.assets.inside : undefined);
 export const format = (s: string, opts: Intl.DateTimeFormatOptions) =>
   date(s).toLocaleDateString("es-ES", { ...opts, timeZone: "UTC" });
 const esc = (s: string) =>
@@ -186,7 +215,77 @@ export function dayBoxes(p: Project, page: Page) {
     height,
   }));
 }
+export function monthCells(month: string) {
+  const first = `${month}-01`;
+  const offset = (date(first).getUTCDay() + 6) % 7;
+  const days: string[] = [];
+  for (let d = first; d.startsWith(month); d = addDays(d, 1)) days.push(d);
+  const cells = Array(Math.ceil((offset + days.length) / 7) * 7).fill(
+    "",
+  ) as string[];
+  days.forEach((d, i) => {
+    cells[offset + i] = d;
+  });
+  return cells;
+}
+export function monthlySvg(p: Project, month: string): string {
+  const fields = p.assets.inside?.template?.fields;
+  const style =
+    fields?.find((f) => f.kind === "month") ||
+    fields?.find((f) => f.kind === "weekday");
+  const color = style?.color || "#777777",
+    font = style?.font || "serif";
+  const cells = monthCells(month),
+    rows = cells.length / 7;
+  const x = 66,
+    y = 190,
+    width = 608,
+    height = 720,
+    cellWidth = width / 7,
+    cellHeight = height / rows;
+  const text = (
+    tx: number,
+    ty: number,
+    value: string,
+    size: number,
+    fill = color,
+  ) =>
+    `<text x="${tx}" y="${ty}" font-family="${font}" font-size="${size}" fill="${fill}">${esc(value)}</text>`;
+  let body = '<rect width="740" height="1050" fill="white"/>';
+  body += text(x, 96, format(`${month}-01`, { month: "long" }), 32);
+  body += text(610, 96, month.slice(0, 4), 22);
+  body += `<line x1="${x}" y1="118" x2="${x + width}" y2="118" stroke="${color}" stroke-opacity="0.65"/>`;
+  [
+    "Lunes",
+    "Martes",
+    "Miércoles",
+    "Jueves",
+    "Viernes",
+    "Sábado",
+    "Domingo",
+  ].forEach((d, i) => {
+    body += text(x + i * cellWidth + 7, 173, d, 13);
+  });
+  for (let r = 0; r <= rows; r++)
+    body += `<line x1="${x}" y1="${y + r * cellHeight}" x2="${x + width}" y2="${y + r * cellHeight}" stroke="${color}" stroke-opacity="0.4"/>`;
+  for (let c = 0; c <= 7; c++)
+    body += `<line x1="${x + c * cellWidth}" y1="${y}" x2="${x + c * cellWidth}" y2="${y + height}" stroke="${color}" stroke-opacity="0.3"/>`;
+  cells.forEach((d, i) => {
+    if (d)
+      body += text(
+        x + (i % 7) * cellWidth + 9,
+        y + Math.floor(i / 7) * cellHeight + 26,
+        String(Number(d.slice(-2))),
+        17,
+        d < p.start || d > p.end ? "#c4c4c4" : color,
+      );
+  });
+  if (cells.some((d) => d && (d < p.start || d > p.end)))
+    body += text(x, 950, "Los días fuera del intervalo aparecen en gris.", 12);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</svg>`;
+}
 export function svg(p: Project, page: Page, includeNotes = true): string {
+  if (page.kind === "monthly") return monthlySvg(p, page.month!);
   const asset = assetFor(p, page);
   const text = (
     x: number,
@@ -278,6 +377,8 @@ export function validProject(value: unknown): value is Project {
     (p.spreadSplit === undefined ||
       p.spreadSplit === 3 ||
       p.spreadSplit === 4) &&
+    (p.monthlyOverview === undefined ||
+      typeof p.monthlyOverview === "boolean") &&
     ["A4", "A5"].includes(p.size) &&
     /^#[0-9a-fA-F]{6}$/.test(p.color) &&
     typeof p.overlay === "boolean" &&

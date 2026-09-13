@@ -421,6 +421,24 @@ function App() {
                     </select>
                   </label>
                 )}
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={project.monthlyOverview ?? false}
+                    onChange={(e) => {
+                      change("monthlyOverview", e.target.checked);
+                      go(1);
+                    }}
+                  />
+                  Añadir vista mensual al inicio de cada mes
+                </label>
+                {project.monthlyOverview && (
+                  <p className="hint">
+                    Una página con el calendario completo de cada mes, incluido
+                    el primero. En semanas de dos caras se añade una cara en
+                    blanco para mantener las parejas.
+                  </p>
+                )}
                 <p className="hint">
                   Semanas de lunes a domingo, cortadas al terminar cada mes. Los
                   días del otro mes quedan en blanco.
@@ -628,17 +646,19 @@ function App() {
                       ? "Portada"
                       : p.kind === "back"
                         ? "Contraportada"
-                        : p.kind === "blank"
-                          ? "En blanco"
-                          : format(p.days.find(Boolean) || `${p.month}-01`, {
-                              day: "numeric",
-                              month: "short",
-                            }) +
-                            (p.side === "right"
-                              ? " · derecha"
-                              : p.side === "left"
-                                ? " · izquierda"
-                                : "")}
+                        : p.kind === "monthly"
+                          ? `Vista mensual · ${format(`${p.month}-01`, { month: "long", year: "numeric" })}`
+                          : p.kind === "blank"
+                            ? "En blanco"
+                            : format(p.days.find(Boolean) || `${p.month}-01`, {
+                                day: "numeric",
+                                month: "short",
+                              }) +
+                              (p.side === "right"
+                                ? " · derecha"
+                                : p.side === "left"
+                                  ? " · izquierda"
+                                  : "")}
                   </option>
                 ))}
               </select>
@@ -704,7 +724,7 @@ function App() {
               <ChevronRight size={20} />
             </button>
           </div>
-          {page && page.kind !== "blank" && (
+          {page && page.kind !== "blank" && page.kind !== "monthly" && (
             <div className="page-override">
               <label>
                 <Upload size={15} />

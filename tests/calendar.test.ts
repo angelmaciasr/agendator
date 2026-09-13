@@ -181,3 +181,73 @@ test("template replaces dates in place without a second calendar and validates m
   );
   assert.ok(!blank.includes("Jueves</text>"));
 });
+
+for (const layout of ["day", "week", "spread"] as Layout[])
+  test(`${layout}: monthly overviews precede each month and preserve interior dates and duplex pairs`, () => {
+    const p = {
+      ...defaults(),
+      layout,
+      start: "2026-12-29",
+      end: "2027-01-12",
+      monthlyOverview: true,
+    };
+    const all = pages(p),
+      monthly = all.filter((p) => p.kind === "monthly");
+    assert.deepEqual(
+      monthly.map((p) => p.month),
+      ["2026-12", "2027-01"],
+    );
+    for (const m of monthly) {
+      const idx = all.indexOf(m);
+      const first = all.findIndex(
+        (p) =>
+          p.kind === "inside" && (p.month || p.days[0].slice(0, 7)) === m.month,
+      );
+      assert.ok(idx < first);
+      assert.equal(first - idx, layout === "spread" ? 2 : 1);
+    }
+    const interior = all.filter((p) => p.kind === "inside");
+    assert.deepEqual(
+      interior,
+      pages({ ...p, monthlyOverview: false }).filter(
+        (p) => p.kind === "inside",
+      ),
+    );
+    assert.equal(all.length % 2, 0);
+    if (layout === "spread")
+      for (let i = 0; i < all.length; i++) {
+        if (all[i].side === "left") {
+          assert.equal(i % 2, 1);
+          assert.equal(all[i + 1].side, "right");
+        }
+      }
+    assert.ok(validProject(p));
+    assert.ok(!validProject({ ...p, monthlyOverview: "yes" }));
+  });
+test("monthly grid aligns weekdays and handles leap years and six-row months", async () => {
+  const { monthCells } = await import("../src/planner.ts");
+  const feb = monthCells("2024-02");
+  assert.deepEqual(feb.slice(0, 4), ["", "", "", "2024-02-01"]);
+  assert.equal(feb.filter(Boolean).length, 29);
+  assert.ok(feb.includes("2024-02-29"));
+  assert.equal(monthCells("2021-02").length, 28);
+  assert.equal(monthCells("2026-03").length, 42);
+  const p = {
+    ...defaults(),
+    start: "2024-02-10",
+    end: "2024-02-20",
+    monthlyOverview: true,
+    assets: {
+      inside: { name: "image.png", data: "data:image/png;base64,aA==" },
+    },
+  };
+  const m = pages(p).find((p) => p.kind === "monthly")!;
+  const output = svg(p, m);
+  assert.ok(output.includes("febrero</text>"));
+  assert.ok(output.includes("2024</text>"));
+  assert.ok(output.includes("#c4c4c4"));
+  assert.ok(!output.includes("<image"));
+  assert.ok(
+    !svg(p, { kind: "blank", days: [], id: "blank" }).includes("<image"),
+  );
+});
