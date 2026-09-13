@@ -153,3 +153,36 @@ test("switch views, navigate facing pages and write on the right page", async ({
     fullPage: true,
   });
 });
+
+test("choose Monday–Thursday split and retain it after reload", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Desde", { exact: true }).fill("2028-03-06");
+  await page.getByLabel("Hasta", { exact: true }).fill("2028-03-12");
+  await page.getByLabel("Reparto de la semana").selectOption("4");
+  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
+  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Escribir el 2028-03-09", exact: true })
+    .click();
+  await expect(page.getByLabel("Ir a página")).toHaveValue("1");
+  await page.getByLabel("Notas del día").fill("Jueves en la cara izquierda");
+  await page
+    .getByRole("button", { name: "Escribir el 2028-03-10", exact: true })
+    .click();
+  await expect(page.getByLabel("Ir a página")).toHaveValue("2");
+  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Reparto de la semana")).toHaveValue("4");
+  await page.getByLabel("Reparto de la semana").selectOption("3");
+  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
+  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Escribir el 2028-03-09", exact: true })
+    .click();
+  await expect(page.getByLabel("Ir a página")).toHaveValue("2");
+  await expect(page.getByLabel("Notas del día")).toHaveValue(
+    "Jueves en la cara izquierda",
+  );
+});

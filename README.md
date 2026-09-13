@@ -16,7 +16,7 @@ Abre la dirección que muestra Vite (normalmente http://localhost:5173).
 ## Funciones
 
 - Asistente de calendario, diseños e impresión; intervalo personalizable de hasta dos años.
-- Un día por página, una semana por página o una semana en dos caras (lunes–miércoles / jueves–domingo).
+- Un día por página, una semana por página o una semana en dos caras (lunes–miércoles / jueves–domingo o lunes–jueves / viernes–domingo).
 - Las semanas se cortan al cambiar de mes. Las posiciones del otro mes quedan completamente en blanco y el mes siguiente empieza en otra página o pareja de caras.
 - Portada, contraportada, plantilla interior, plantilla derecha y diseño individual para cualquier página. Admite PNG, JPEG y WebP de hasta 15 MB por imagen.
 - Vista previa de una página o dos enfrentadas, con navegación por página o pareja; portada y contraportada se muestran solas. Se puede seleccionar y escribir en cualquiera de las caras.

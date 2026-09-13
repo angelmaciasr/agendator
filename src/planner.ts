@@ -6,6 +6,7 @@ export type Project = {
   start: string;
   end: string;
   layout: Layout;
+  spreadSplit?: 3 | 4;
   size: "A5" | "A4";
   color: string;
   margin: number;
@@ -30,6 +31,7 @@ export const defaults = (): Project => ({
   start: `${new Date().getFullYear()}-01-01`,
   end: `${new Date().getFullYear()}-12-31`,
   layout: "spread",
+  spreadSplit: 3,
   size: "A5",
   color: "#b45309",
   margin: 9,
@@ -88,14 +90,14 @@ export function pages(p: Project): Page[] {
             {
               id: `left-${d}-${month}`,
               kind: "inside",
-              days: days.slice(0, 3),
+              days: days.slice(0, p.spreadSplit ?? 3),
               side: "left",
               month,
             },
             {
               id: `right-${d}-${month}`,
               kind: "inside",
-              days: days.slice(3),
+              days: days.slice(p.spreadSplit ?? 3),
               side: "right",
               month,
             },
@@ -257,6 +259,9 @@ export function validProject(value: unknown): value is Project {
     typeof p.title === "string" &&
     p.title.length <= 120 &&
     ["day", "week", "spread"].includes(p.layout) &&
+    (p.spreadSplit === undefined ||
+      p.spreadSplit === 3 ||
+      p.spreadSplit === 4) &&
     ["A4", "A5"].includes(p.size) &&
     /^#[0-9a-fA-F]{6}$/.test(p.color) &&
     typeof p.overlay === "boolean" &&

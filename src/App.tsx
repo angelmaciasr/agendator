@@ -301,7 +301,10 @@ function App() {
                         {
                           value: "spread",
                           title: "Una semana en dos caras",
-                          detail: "Lunes–miércoles · jueves–domingo",
+                          detail:
+                            (project.spreadSplit ?? 3) === 4
+                              ? "Lunes–jueves · viernes–domingo"
+                              : "Lunes–miércoles · jueves–domingo",
                           glyph: "▥ ▥",
                         },
                       ] as const
@@ -329,6 +332,28 @@ function App() {
                       </label>
                     ))}
                   </fieldset>
+                  {project.layout === "spread" && (
+                    <label>
+                      Reparto de la semana
+                      <select
+                        value={project.spreadSplit ?? 3}
+                        onChange={(e) => {
+                          change(
+                            "spreadSplit",
+                            Number(e.target.value) as 3 | 4,
+                          );
+                          select("");
+                        }}
+                      >
+                        <option value={3}>
+                          Lunes–miércoles / jueves–domingo
+                        </option>
+                        <option value={4}>
+                          Lunes–jueves / viernes–domingo
+                        </option>
+                      </select>
+                    </label>
+                  )}
                   <p className="hint">
                     Semanas de lunes a domingo, cortadas al terminar cada mes.
                     Los días del otro mes quedan en blanco.

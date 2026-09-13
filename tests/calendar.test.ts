@@ -81,3 +81,45 @@ test("month boundary splits the week and leaves the other month blank", () => {
     assert.ok(!svg(p, inside[0]).includes("marzo"));
   }
 });
+
+test("four-day left page preserves dates and month cutoffs, with compatible backups", () => {
+  const p = {
+    ...defaults(),
+    layout: "spread" as const,
+    spreadSplit: 4 as const,
+    start: "2028-03-06",
+    end: "2028-03-12",
+  };
+  const interior = pages(p).filter((p) => p.kind === "inside");
+  assert.deepEqual(interior[0].days, [
+    "2028-03-06",
+    "2028-03-07",
+    "2028-03-08",
+    "2028-03-09",
+  ]);
+  assert.deepEqual(interior[1].days, [
+    "2028-03-10",
+    "2028-03-11",
+    "2028-03-12",
+  ]);
+  const boundary = pages({
+    ...p,
+    start: "2028-02-28",
+    end: "2028-03-05",
+  }).filter((p) => p.kind === "inside");
+  assert.deepEqual(
+    boundary.map((p) => p.days),
+    [
+      ["2028-02-28", "2028-02-29", "", ""],
+      ["", "", ""],
+      ["", "", "2028-03-01", "2028-03-02"],
+      ["2028-03-03", "2028-03-04", "2028-03-05"],
+    ],
+  );
+  assert.ok(validProject(JSON.parse(JSON.stringify(p))));
+  const legacy = { ...p };
+  delete legacy.spreadSplit;
+  assert.ok(validProject(legacy));
+  assert.equal(pages(legacy)[1].days.length, 3);
+  assert.ok(!validProject({ ...p, spreadSplit: 5 }));
+});
