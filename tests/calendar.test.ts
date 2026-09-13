@@ -123,3 +123,61 @@ test("four-day left page preserves dates and month cutoffs, with compatible back
   assert.equal(pages(legacy)[1].days.length, 3);
   assert.ok(!validProject({ ...p, spreadSplit: 5 }));
 });
+
+test("template replaces dates in place without a second calendar and validates mapping", async () => {
+  const { renderTemplate, validTemplate, templateIssue } =
+    await import("../src/template.ts");
+  const field = {
+    x: 70,
+    y: 100,
+    width: 40,
+    height: 25,
+    fontSize: 16,
+    color: "#777777",
+    background: "#ffffff",
+    font: "serif" as const,
+    align: "left" as const,
+  };
+  const t = {
+    fields: [
+      { ...field, kind: "month" as const },
+      { ...field, kind: "number" as const, weekday: 3 },
+      { ...field, kind: "weekday" as const, weekday: 3 },
+    ],
+    days: [{ weekday: 3, area: { x: 60, y: 95, width: 600, height: 220 } }],
+  };
+  assert.ok(validTemplate(t));
+  assert.ok(
+    !validTemplate({ ...t, fields: [{ ...t.fields[0], x: Infinity }] }),
+  );
+  const p = {
+    ...defaults(),
+    start: "2026-10-01",
+    end: "2026-10-04",
+    spreadSplit: 4 as const,
+  };
+  const content = renderTemplate(p, pages(p)[1], t, false);
+  assert.ok(content.includes("octubre</text>"));
+  assert.ok(content.includes(">1</text>"));
+  assert.ok(content.includes("Jueves</text>"));
+  assert.ok(!content.includes("<line"));
+  const asset = {
+    name: "left.png",
+    data: "data:image/png;base64,aA==",
+    template: t,
+  };
+  assert.ok(
+    templateIssue({ ...p, assets: { inside: asset } }).includes("Lunes"),
+  );
+  const blank = renderTemplate(
+    { ...p, start: "2026-09-28", end: "2026-09-30" },
+    {
+      ...pages(p)[1],
+      days: ["2026-09-28", "2026-09-29", "2026-09-30", ""],
+      month: "2026-09",
+    },
+    t,
+    false,
+  );
+  assert.ok(!blank.includes("Jueves</text>"));
+});

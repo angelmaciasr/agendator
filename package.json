@@ -9,14 +9,17 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "tsx --test tests/calendar.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "node scripts/prepare-ocr.mjs"
   },
   "dependencies": {
+    "@tesseract.js-data/spa": "^1.0.0",
     "idb-keyval": "^6.3.0",
     "lucide-react": "^1.45.0",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

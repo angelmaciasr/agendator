@@ -6,8 +6,6 @@ import {
   ChevronRight,
   Download,
   Upload,
-  Settings2,
-  PenLine,
   FileImage,
   Check,
   Menu,
@@ -20,13 +18,13 @@ import {
   validate,
   validProject,
   format,
-  today,
-  dayBoxes,
   type Project,
   type Asset,
 } from "./planner";
 import { download, exportPDF } from "./export";
 import "./App.css";
+import TemplateEditor from "./TemplateEditor";
+import { templateIssue, type Template } from "./template";
 const steps = ["Calendario", "Diseños", "Impresión"];
 function App() {
   const [view, setView] = useState<"single" | "double">("single");
@@ -35,14 +33,13 @@ function App() {
   const [loaded, setLoaded] = useState(false),
     [saved, setSaved] = useState("Cargando…");
   const [step, setStep] = useState(0),
-    [mode, setMode] = useState("design"),
     [index, setIndex] = useState(1),
-    [selected, select] = useState(""),
     [error, setError] = useState("");
   const [busy, setBusy] = useState(false),
     [progress, setProgress] = useState(0),
-    [includeNotes, setIncludeNotes] = useState(false),
     [mobileOpen, setMobileOpen] = useState(false);
+  const [detecting, setDetecting] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
   const restore = useRef<HTMLInputElement>(null);
   useEffect(() => {
     get("agendator-project")
@@ -74,6 +71,7 @@ function App() {
     actualIndex = Math.min(index, Math.max(0, all.length - 1)),
     page = all[actualIndex],
     dateError = validate(project);
+  const mappingError = templateIssue(project);
   const spreadStart =
     actualIndex === 0
       ? 0
@@ -86,16 +84,13 @@ function App() {
     viewStart + (view === "double" && viewStart > 0 ? 2 : 1),
   );
   const viewEnd = viewStart + visiblePages.length - 1;
-  const activeDay =
-    selected && page?.days.includes(selected)
-      ? selected
-      : page?.days.find((d) => d >= project.start && d <= project.end) || "";
   const go = (n: number) => {
     setIndex(n);
-    select("");
   };
   async function upload(file: File | undefined, target: string) {
     if (!file) return;
+    setError("");
+    setDetecting("Abriendo imagen…");
     try {
       if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
         throw new Error("Elige una imagen PNG, JPG o WebP.");
@@ -111,15 +106,49 @@ function App() {
       img.src = data;
       await img.decode();
       const asset: Asset = { name: file.name, data };
+      if (
+        target === "inside" ||
+        target === "right" ||
+        (target === "override" && page?.kind === "inside")
+      ) {
+        setDetecting("Buscando las fechas de la plantilla…");
+        try {
+          const { detectTemplate } = await import("./detect-template");
+          asset.template = await detectTemplate(data, setDetecting);
+        } catch {
+          asset.template = { fields: [], days: [] };
+        }
+        if (!asset.template.days.length)
+          setError(
+            "No se han reconocido los días. Abre Ajustar fechas y marca sus campos y zonas en la imagen.",
+          );
+      }
+      if (target === "inside" && asset.template?.days.length === 7)
+        change("layout", "week");
+      if (target === "inside" && asset.template?.days.length === 1)
+        change("layout", "day");
       if (target === "override" && page)
         update((p) => ({
           ...p,
           overrides: { ...p.overrides, [page.id]: asset },
         }));
-      else update((p) => ({ ...p, assets: { ...p.assets, [target]: asset } }));
-      setError("");
+      else
+        update((p) => ({
+          ...p,
+          assets: { ...p.assets, [target]: asset },
+          ...(asset.template &&
+          ((target === "inside" &&
+            asset.template.days.length === 4 &&
+            asset.template.days.every((d) => d.weekday < 4)) ||
+            (target === "right" &&
+              Math.min(...asset.template.days.map((d) => d.weekday)) === 4))
+            ? { layout: "spread", spreadSplit: 4 }
+            : {}),
+        }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo abrir la imagen.");
+    } finally {
+      setDetecting("");
     }
   }
   async function generate() {
@@ -127,7 +156,7 @@ function App() {
     setProgress(0);
     setError("");
     try {
-      await exportPDF(project, includeNotes, setProgress);
+      await exportPDF(project, false, setProgress);
     } catch (e) {
       setError(
         `No se pudo crear el PDF. ${e instanceof Error ? e.message : ""}`,
@@ -136,40 +165,91 @@ function App() {
       setBusy(false);
     }
   }
+  async function loadExamples() {
+    for (const [target, name] of [
+      ["inside", "izquierda"],
+      ["right", "derecha"],
+    ]) {
+      const response = await fetch(
+        `${import.meta.env.BASE_URL}templates/semana-${name}.png`,
+      );
+      if (!response.ok) {
+        setError("No se pudo cargar la plantilla de ejemplo.");
+        return;
+      }
+      await upload(
+        new File([await response.blob()], `semana-${name}.png`, {
+          type: "image/png",
+        }),
+        target,
+      );
+    }
+    setView("double");
+    go(1);
+  }
+  const editingAsset =
+    editing === "override" && page
+      ? project.overrides[page.id]
+      : project.assets[editing as keyof Project["assets"]];
+  function saveTemplate(template: Template) {
+    if (!editing || !editingAsset) return;
+    if (editing === "override" && page)
+      change("overrides", {
+        ...project.overrides,
+        [page.id]: { ...editingAsset, template },
+      });
+    else
+      change("assets", {
+        ...project.assets,
+        [editing]: { ...editingAsset, template },
+      });
+  }
   const assetInput = (
     target: "front" | "back" | "inside" | "right",
     title: string,
   ) => (
-    <div className="asset-row" key={target}>
-      <label className="upload">
-        <FileImage size={21} />
-        <span>
-          <strong>{title}</strong>
-          <small>{project.assets[target]?.name || "Elegir imagen"}</small>
-        </span>
-        <input
-          aria-label={title}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onChange={(e) => {
-            void upload(e.target.files?.[0], target);
-            e.target.value = "";
-          }}
-        />
-        <Upload size={16} />
-      </label>
-      {project.assets[target] && (
-        <button
-          className="icon"
-          aria-label={`Quitar ${title}`}
-          onClick={() => {
-            const assets = { ...project.assets };
-            delete assets[target];
-            change("assets", assets);
-          }}
-        >
-          <X size={16} />
-        </button>
+    <div className="asset-upload" key={target}>
+      <div className="asset-row">
+        <label className="upload">
+          <FileImage size={21} />
+          <span>
+            <strong>{title}</strong>
+            <small>{project.assets[target]?.name || "Elegir imagen"}</small>
+          </span>
+          <input
+            aria-label={title}
+            disabled={!!detecting}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => {
+              void upload(e.target.files?.[0], target);
+              e.target.value = "";
+            }}
+          />
+          <Upload size={16} />
+        </label>
+        {project.assets[target] && (
+          <button
+            className="icon"
+            aria-label={`Quitar ${title}`}
+            onClick={() => {
+              const assets = { ...project.assets };
+              delete assets[target];
+              change("assets", assets);
+            }}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+      {project.assets[target]?.template && (
+        <div className="template-info">
+          <span>
+            {project.assets[target]!.template!.days.length} días ·{" "}
+            {project.assets[target]!.template!.fields.length} campos
+          </span>
+          <button onClick={() => setEditing(target)}>Ajustar fechas</button>
+        </div>
       )}
     </div>
   );
@@ -181,26 +261,10 @@ function App() {
           <BookOpen size={25} />
           <span>agendator</span>
         </div>
-        <div className="mode-tabs">
-          <button
-            className={mode === "design" ? "active" : ""}
-            onClick={() => setMode("design")}
-          >
-            <Settings2 size={17} />
-            Crear agenda
-          </button>
-          <button
-            className={mode === "write" ? "active" : ""}
-            onClick={() => setMode("write")}
-          >
-            <PenLine size={17} />
-            Mi agenda
-          </button>
-        </div>
         <button
           className="primary export-header"
           onClick={generate}
-          disabled={busy || !!dateError}
+          disabled={busy || !!dateError || !!detecting || !!mappingError}
         >
           <Download size={17} />
           {busy ? `${progress}%` : "Exportar PDF"}
@@ -228,365 +292,251 @@ function App() {
           </button>
         </div>
       )}
+      {mappingError && !detecting && (
+        <div className="detection-status" role="status">
+          {mappingError}
+        </div>
+      )}
+      {detecting && (
+        <div className="detection-status" role="status">
+          {detecting}
+        </div>
+      )}
       <div className="workspace">
         <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
-          {mode === "design" ? (
-            <>
-              <nav className="steps" aria-label="Pasos del asistente">
-                {steps.map((s, i) => (
-                  <button
-                    key={s}
-                    className={step === i ? "active" : ""}
-                    onClick={() => setStep(i)}
-                  >
-                    <span>{i + 1}</span>
-                    {s}
-                  </button>
-                ))}
-              </nav>
-              {step === 0 && (
-                <section>
-                  <h1>Tu agenda, a tu medida</h1>
-                  <p>Elige las fechas y cómo quieres repartir tus días.</p>
+          <>
+            <nav className="steps" aria-label="Pasos del asistente">
+              {steps.map((s, i) => (
+                <button
+                  key={s}
+                  className={step === i ? "active" : ""}
+                  onClick={() => setStep(i)}
+                >
+                  <span>{i + 1}</span>
+                  {s}
+                </button>
+              ))}
+            </nav>
+            {step === 0 && (
+              <section>
+                <h1>Tu agenda, a tu medida</h1>
+                <p>Elige las fechas y cómo quieres repartir tus días.</p>
+                <label>
+                  Nombre de la agenda
+                  <input
+                    value={project.title}
+                    maxLength={120}
+                    onChange={(e) => change("title", e.target.value)}
+                  />
+                </label>
+                <div className="dates">
                   <label>
-                    Nombre de la agenda
+                    Desde
                     <input
-                      value={project.title}
-                      maxLength={120}
-                      onChange={(e) => change("title", e.target.value)}
+                      type="date"
+                      value={project.start}
+                      onChange={(e) => {
+                        change("start", e.target.value);
+                        go(1);
+                      }}
                     />
                   </label>
-                  <div className="dates">
-                    <label>
-                      Desde
+                  <label>
+                    Hasta
+                    <input
+                      type="date"
+                      value={project.end}
+                      onChange={(e) => change("end", e.target.value)}
+                    />
+                  </label>
+                </div>
+                {dateError && (
+                  <p role="alert" className="validation">
+                    {dateError}
+                  </p>
+                )}
+                <fieldset>
+                  <legend>¿Cuánto ocupa cada página?</legend>
+                  {(
+                    [
+                      {
+                        value: "day",
+                        title: "Un día por página",
+                        detail: "Espacio para todos los detalles",
+                        glyph: "▤",
+                      },
+                      {
+                        value: "week",
+                        title: "Una semana por página",
+                        detail: "Los siete días de un vistazo",
+                        glyph: "▥",
+                      },
+                      {
+                        value: "spread",
+                        title: "Una semana en dos caras",
+                        detail:
+                          (project.spreadSplit ?? 3) === 4
+                            ? "Lunes–jueves · viernes–domingo"
+                            : "Lunes–miércoles · jueves–domingo",
+                        glyph: "▥ ▥",
+                      },
+                    ] as const
+                  ).map((o) => (
+                    <label
+                      className={`layout-option ${project.layout === o.value ? "chosen" : ""}`}
+                      key={o.value}
+                    >
                       <input
-                        type="date"
-                        value={project.start}
-                        onChange={(e) => {
-                          change("start", e.target.value);
+                        type="radio"
+                        name="layout"
+                        checked={project.layout === o.value}
+                        onChange={() => {
+                          change("layout", o.value);
                           go(1);
                         }}
                       />
-                    </label>
-                    <label>
-                      Hasta
-                      <input
-                        type="date"
-                        value={project.end}
-                        onChange={(e) => change("end", e.target.value)}
-                      />
-                    </label>
-                  </div>
-                  {dateError && (
-                    <p role="alert" className="validation">
-                      {dateError}
-                    </p>
-                  )}
-                  <fieldset>
-                    <legend>¿Cuánto ocupa cada página?</legend>
-                    {(
-                      [
-                        {
-                          value: "day",
-                          title: "Un día por página",
-                          detail: "Espacio para todos los detalles",
-                          glyph: "▤",
-                        },
-                        {
-                          value: "week",
-                          title: "Una semana por página",
-                          detail: "Los siete días de un vistazo",
-                          glyph: "▥",
-                        },
-                        {
-                          value: "spread",
-                          title: "Una semana en dos caras",
-                          detail:
-                            (project.spreadSplit ?? 3) === 4
-                              ? "Lunes–jueves · viernes–domingo"
-                              : "Lunes–miércoles · jueves–domingo",
-                          glyph: "▥ ▥",
-                        },
-                      ] as const
-                    ).map((o) => (
-                      <label
-                        className={`layout-option ${project.layout === o.value ? "chosen" : ""}`}
-                        key={o.value}
-                      >
-                        <input
-                          type="radio"
-                          name="layout"
-                          checked={project.layout === o.value}
-                          onChange={() => {
-                            change("layout", o.value);
-                            go(1);
-                          }}
-                        />
-                        <span className="layout-glyph" aria-hidden="true">
-                          {o.glyph}
-                        </span>
-                        <span>
-                          <strong>{o.title}</strong>
-                          <small>{o.detail}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </fieldset>
-                  {project.layout === "spread" && (
-                    <label>
-                      Reparto de la semana
-                      <select
-                        value={project.spreadSplit ?? 3}
-                        onChange={(e) => {
-                          change(
-                            "spreadSplit",
-                            Number(e.target.value) as 3 | 4,
-                          );
-                          select("");
-                        }}
-                      >
-                        <option value={3}>
-                          Lunes–miércoles / jueves–domingo
-                        </option>
-                        <option value={4}>
-                          Lunes–jueves / viernes–domingo
-                        </option>
-                      </select>
-                    </label>
-                  )}
-                  <p className="hint">
-                    Semanas de lunes a domingo, cortadas al terminar cada mes.
-                    Los días del otro mes quedan en blanco.
-                  </p>
-                  <button
-                    className="primary next"
-                    disabled={!!dateError}
-                    onClick={() => setStep(1)}
-                  >
-                    Continuar con los diseños
-                    <ChevronRight size={17} />
-                  </button>
-                </section>
-              )}
-              {step === 1 && (
-                <section>
-                  <h1>Añade tus diseños</h1>
-                  <p>
-                    Sube las imágenes de tu agenda o utiliza el diseño que ves
-                    aquí.
-                  </p>
-                  {assetInput("front", "Portada")}
-                  {assetInput("back", "Contraportada")}
-                  {assetInput(
-                    "inside",
-                    project.layout === "spread"
-                      ? "Página izquierda"
-                      : "Páginas interiores",
-                  )}
-                  {project.layout === "spread" &&
-                    assetInput("right", "Página derecha")}
-                  <p className="hint">
-                    PNG, JPG o WebP · hasta 15 MB. La imagen llena la página y
-                    se recorta si su proporción es distinta.
-                  </p>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={project.overlay}
-                      onChange={(e) => change("overlay", e.target.checked)}
-                    />
-                    Superponer fechas, líneas y notas
-                  </label>
-                  <label className="color-field">
-                    Color del calendario
-                    <input
-                      type="color"
-                      value={project.color}
-                      onChange={(e) => change("color", e.target.value)}
-                    />
-                  </label>
-                  {(["margin", "top", "bottom"] as const).map((k, i) => (
-                    <label key={k}>
-                      {
-                        [
-                          "Margen lateral",
-                          "Inicio del calendario",
-                          "Margen inferior",
-                        ][i]
-                      }
-                      <span className="range-value">{project[k]}%</span>
-                      <input
-                        type="range"
-                        min="5"
-                        max={k === "top" ? "35" : "20"}
-                        value={project[k]}
-                        onChange={(e) => change(k, +e.target.value)}
-                      />
+                      <span className="layout-glyph" aria-hidden="true">
+                        {o.glyph}
+                      </span>
+                      <span>
+                        <strong>{o.title}</strong>
+                        <small>{o.detail}</small>
+                      </span>
                     </label>
                   ))}
-                  <button className="primary next" onClick={() => setStep(2)}>
-                    Preparar impresión
-                    <ChevronRight size={17} />
-                  </button>
-                </section>
-              )}
-              {step === 2 && (
-                <section>
-                  <h1>Lista para imprimir</h1>
-                  <p>
-                    El PDF incluye portada, interiores y contraportada en orden
-                    de lectura.
-                  </p>
+                </fieldset>
+                {project.layout === "spread" && (
                   <label>
-                    Tamaño del papel
+                    Reparto de la semana
                     <select
-                      value={project.size}
-                      onChange={(e) =>
-                        change("size", e.target.value as Project["size"])
-                      }
+                      value={project.spreadSplit ?? 3}
+                      onChange={(e) => {
+                        change("spreadSplit", Number(e.target.value) as 3 | 4);
+                      }}
                     >
-                      <option value="A5">A5 · 148 × 210 mm</option>
-                      <option value="A4">A4 · 210 × 297 mm</option>
+                      <option value={3}>
+                        Lunes–miércoles / jueves–domingo
+                      </option>
+                      <option value={4}>Lunes–jueves / viernes–domingo</option>
                     </select>
                   </label>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={includeNotes}
-                      onChange={(e) => setIncludeNotes(e.target.checked)}
-                    />
-                    Incluir mis notas en el PDF
-                  </label>
-                  <div className="print-summary">
-                    <div>
-                      <span>Páginas totales</span>
-                      <strong>{all.length}</strong>
-                    </div>
-                    <div>
-                      <span>Hojas a doble cara</span>
-                      <strong>{all.length / 2}</strong>
-                    </div>
-                    <div>
-                      <span>Resolución de exportación</span>
-                      <strong>300 ppp</strong>
-                    </div>
-                  </div>
-                  <p>
-                    Imprime a tamaño real (100%), a doble cara y con giro por el
-                    borde largo.
-                  </p>
-                  <p className="hint">
-                    Se añade una página en blanco cuando hace falta para colocar
-                    la contraportada al final de una hoja. Sin imposición de
-                    cuadernillos ni sangrado profesional. Usa imágenes de alta
-                    resolución.
-                  </p>
-                  <p className="hint">
-                    Las notas que excedan el espacio visible se conservan en la
-                    agenda digital; en el PDF se recortan con «…».
-                  </p>
-                  {!project.overlay && (
-                    <p className="validation">
-                      La superposición está desactivada: el PDF solo mostrará
-                      tus diseños.
-                    </p>
-                  )}
-                  <button
-                    className="primary next"
-                    onClick={generate}
-                    disabled={busy || !!dateError}
-                  >
-                    <Download size={17} />
-                    {busy ? `Generando… ${progress}%` : "Descargar PDF"}
-                  </button>
-                  {busy && <progress value={progress} max="100" />}
-                </section>
-              )}
-            </>
-          ) : (
-            <section className="writing">
-              <h1>Mi agenda</h1>
-              <p>
-                Selecciona un día y escribe. Tus notas se guardan
-                automáticamente.
-              </p>
-              <label>
-                Ir a una fecha
-                <input
-                  type="date"
-                  min={project.start}
-                  max={project.end}
-                  value={activeDay}
-                  onChange={(e) => {
-                    const idx = all.findIndex((p) =>
-                      p.days.includes(e.target.value),
-                    );
-                    if (idx >= 0) {
-                      go(idx);
-                      select(e.target.value);
-                    }
+                )}
+                <p className="hint">
+                  Semanas de lunes a domingo, cortadas al terminar cada mes. Los
+                  días del otro mes quedan en blanco.
+                </p>
+                <button
+                  className="primary next"
+                  disabled={!!dateError}
+                  onClick={() => setStep(1)}
+                >
+                  Continuar con los diseños
+                  <ChevronRight size={17} />
+                </button>
+              </section>
+            )}
+            {step === 1 && (
+              <section>
+                <h1>Añade tus diseños</h1>
+                <p>
+                  Sube una plantilla que ya tenga el diseño y los días.
+                  Detectamos las fechas para sustituirlas en su sitio durante
+                  todo el calendario.
+                </p>
+                {assetInput("front", "Portada")}
+                {assetInput("back", "Contraportada")}
+                {assetInput(
+                  "inside",
+                  project.layout === "spread"
+                    ? "Página izquierda"
+                    : "Páginas interiores",
+                )}
+                {project.layout === "spread" &&
+                  assetInput("right", "Página derecha")}
+                <p className="hint">
+                  PNG, JPG o WebP · hasta 15 MB. Las plantillas se ajustan al
+                  papel completo. Usa imágenes con la proporción del papel.
+                </p>
+                <button
+                  className="secondary"
+                  disabled={!!detecting}
+                  onClick={() => {
+                    void loadExamples().catch(() => {
+                      setDetecting("");
+                      setError("No se pudieron cargar las plantillas.");
+                    });
                   }}
-                />
-              </label>
-              <button
-                className="secondary"
-                onClick={() => {
-                  const idx = all.findIndex((p) => p.days.includes(today()));
-                  if (idx >= 0) {
-                    go(idx);
-                    select(today());
-                  } else
-                    setError(
-                      "Hoy no está dentro de las fechas de esta agenda.",
-                    );
-                }}
-              >
-                Ir a hoy
-              </button>
-              <div className="day-selector">
-                {page?.days
-                  .filter((d) => d >= project.start && d <= project.end)
-                  .map((d) => (
-                    <button
-                      key={d}
-                      className={activeDay === d ? "active" : ""}
-                      onClick={() => select(d)}
-                    >
-                      {format(d, { weekday: "short", day: "numeric" })}
-                    </button>
-                  ))}
-              </div>
-              {activeDay ? (
+                >
+                  Cargar las dos plantillas de ejemplo
+                </button>
+                <p className="hint">
+                  Revisa las posiciones en «Ajustar fechas». Se conserva todo el
+                  diseño: líneas, recuadros, Importante y Notas. La detección se
+                  hace en este navegador.
+                </p>
+                <button className="primary next" onClick={() => setStep(2)}>
+                  Preparar impresión
+                  <ChevronRight size={17} />
+                </button>
+              </section>
+            )}
+            {step === 2 && (
+              <section>
+                <h1>Lista para imprimir</h1>
+                <p>
+                  El PDF incluye portada, interiores y contraportada en orden de
+                  lectura.
+                </p>
                 <label>
-                  {format(activeDay, {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                  })}
-                  <textarea
-                    aria-label="Notas del día"
-                    placeholder="Planes, ideas, cosas por hacer…"
-                    maxLength={20000}
-                    value={project.notes[activeDay] || ""}
+                  Tamaño del papel
+                  <select
+                    value={project.size}
                     onChange={(e) =>
-                      change("notes", {
-                        ...project.notes,
-                        [activeDay]: e.target.value,
-                      })
+                      change("size", e.target.value as Project["size"])
                     }
-                  />
-                  <small>
-                    {(project.notes[activeDay] || "").length.toLocaleString(
-                      "es-ES",
-                    )}{" "}
-                    / 20.000 caracteres
-                  </small>
+                  >
+                    <option value="A5">A5 · 148 × 210 mm</option>
+                    <option value="A4">A4 · 210 × 297 mm</option>
+                  </select>
                 </label>
-              ) : (
-                <p>Abre una página interior para empezar a escribir.</p>
-              )}
-            </section>
-          )}
+                <div className="print-summary">
+                  <div>
+                    <span>Páginas totales</span>
+                    <strong>{all.length}</strong>
+                  </div>
+                  <div>
+                    <span>Hojas a doble cara</span>
+                    <strong>{all.length / 2}</strong>
+                  </div>
+                  <div>
+                    <span>Resolución de exportación</span>
+                    <strong>300 ppp</strong>
+                  </div>
+                </div>
+                <p>
+                  Imprime a tamaño real (100%), a doble cara y con giro por el
+                  borde largo.
+                </p>
+                <p className="hint">
+                  Se añade una página en blanco cuando hace falta para colocar
+                  la contraportada al final de una hoja. Sin imposición de
+                  cuadernillos ni sangrado profesional. Usa imágenes de alta
+                  resolución.
+                </p>
+                <button
+                  className="primary next"
+                  onClick={generate}
+                  disabled={
+                    busy || !!dateError || !!detecting || !!mappingError
+                  }
+                >
+                  <Download size={17} />
+                  {busy ? `Generando… ${progress}%` : "Descargar PDF"}
+                </button>
+                {busy && <progress value={progress} max="100" />}
+              </section>
+            )}
+          </>
           <div className="backup">
             <button
               onClick={() =>
@@ -629,17 +579,15 @@ function App() {
               }}
             />
             <p>
-              Diseños y notas solo en este navegador. Guarda una copia para
-              llevarlos a otro dispositivo.
+              Plantillas y ajustes guardados en este navegador. Descarga una
+              copia para llevarlos a otro dispositivo.
             </p>
           </div>
         </aside>
         <main className="preview-area">
           <div className="preview-toolbar">
             <div>
-              <strong>
-                {mode === "design" ? "Vista previa" : "Tu agenda"}
-              </strong>
+              <strong>Vista previa</strong>
               <span>
                 {project.size} ·{" "}
                 {project.layout === "day"
@@ -714,33 +662,8 @@ function App() {
                     <div className="paper">
                       <img
                         alt={`Vista previa de la página ${pageIndex + 1}`}
-                        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(project, visiblePage))}`}
+                        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(project, visiblePage, false))}`}
                       />
-                      {mode === "write" &&
-                        visiblePage.kind === "inside" &&
-                        dayBoxes(project, visiblePage)
-                          .filter(
-                            (b) =>
-                              b.day >= project.start && b.day <= project.end,
-                          )
-                          .map((b) => (
-                            <button
-                              className={`day-hit ${activeDay === b.day ? "selected" : ""}`}
-                              key={b.day}
-                              aria-label={`Escribir el ${b.day}`}
-                              style={{
-                                left: `${(b.x / 740) * 100}%`,
-                                top: `${(b.y / 1050) * 100}%`,
-                                width: `${(b.width / 740) * 100}%`,
-                                height: `${(b.height / 1050) * 100}%`,
-                              }}
-                              onClick={() => {
-                                setIndex(pageIndex);
-                                select(b.day);
-                                setMobileOpen(true);
-                              }}
-                            />
-                          ))}
                     </div>
                   </div>
                 );
@@ -781,7 +704,7 @@ function App() {
               <ChevronRight size={20} />
             </button>
           </div>
-          {mode === "design" && page && page.kind !== "blank" && (
+          {page && page.kind !== "blank" && (
             <div className="page-override">
               <label>
                 <Upload size={15} />
@@ -798,6 +721,11 @@ function App() {
                   }}
                 />
               </label>
+              {project.overrides[page.id]?.template && (
+                <button onClick={() => setEditing("override")}>
+                  Ajustar fechas
+                </button>
+              )}
               {project.overrides[page.id] && (
                 <button
                   onClick={() => {
@@ -813,6 +741,13 @@ function App() {
           )}
         </main>
       </div>
+      {editing && editingAsset && (
+        <TemplateEditor
+          asset={editingAsset}
+          onChange={saveTemplate}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }

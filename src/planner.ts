@@ -1,5 +1,12 @@
+import {
+  templateFor,
+  dateForWeekday,
+  renderTemplate,
+  validTemplate,
+  type Template,
+} from "./template";
 export type Layout = "day" | "week" | "spread";
-export type Asset = { name: string; data: string };
+export type Asset = { name: string; data: string; template?: Template };
 export type Project = {
   version: 1;
   title: string;
@@ -161,6 +168,12 @@ export function wrap(text: string, width: number): string[] {
   });
 }
 export function dayBoxes(p: Project, page: Page) {
+  const template = templateFor(p, page);
+  if (template)
+    return template.days.map((d) => ({
+      day: dateForWeekday(page, d.weekday) || "",
+      ...d.area,
+    }));
   const x = (p.margin / 100) * 740;
   const y = (p.top / 100) * 1050;
   const height =
@@ -186,7 +199,7 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
     `<text x="${x}" y="${y}" font-family="sans-serif" font-size="${size}" font-weight="${weight}" fill="${color}">${esc(value)}</text>`;
   let body = '<rect width="740" height="1050" fill="white"/>';
   if (asset)
-    body += `<image href="${esc(asset.data)}" width="740" height="1050" preserveAspectRatio="xMidYMid slice"/>`;
+    body += `<image href="${esc(asset.data)}" width="740" height="1050" preserveAspectRatio="${asset.template ? "none" : "xMidYMid slice"}"/>`;
   if (page.kind === "blank")
     return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</svg>`;
   if (page.kind !== "inside" && !asset) {
@@ -206,7 +219,9 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
       );
     } else body += text(80, 920, p.title.slice(0, 55), 20, p.color);
   }
-  if (page.kind === "inside" && p.overlay) {
+  const template = templateFor(p, page);
+  if (template) body += renderTemplate(p, page, template, includeNotes);
+  if (page.kind === "inside" && p.overlay && !template) {
     body += text(
       (p.margin / 100) * 740,
       Math.max(27, (p.top / 100) * 1050 - 24),
@@ -253,7 +268,8 @@ export function validProject(value: unknown): value is Project {
     a &&
     typeof a.name === "string" &&
     typeof a.data === "string" &&
-    /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(a.data);
+    /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(a.data) &&
+    (a.template === undefined || validTemplate(a.template));
   return (
     p.version === 1 &&
     typeof p.title === "string" &&

@@ -34,14 +34,12 @@ export async function exportPDF(
       const jpg = await doc.embedJpg(canvas.toDataURL("image/jpeg", 0.92));
       const dimensions: [number, number] =
         p.size === "A4" ? [595.276, 841.89] : [419.528, 595.276];
-      doc
-        .addPage(dimensions)
-        .drawImage(jpg, {
-          x: 0,
-          y: 0,
-          width: dimensions[0],
-          height: dimensions[1],
-        });
+      doc.addPage(dimensions).drawImage(jpg, {
+        x: 0,
+        y: 0,
+        width: dimensions[0],
+        height: dimensions[1],
+      });
       canvas.width = 0;
       canvas.height = 0;
     } finally {

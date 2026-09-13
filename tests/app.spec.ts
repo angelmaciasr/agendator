@@ -1,128 +1,121 @@
 import { test, expect } from "@playwright/test";
 import { PDFDocument } from "pdf-lib";
-import { readFile } from "node:fs/promises";
-test("configure, upload, write, persist, back up and export printable PDF", async ({
+import { readFile, writeFile } from "node:fs/promises";
+const source = async (page: import("@playwright/test").Page, n: number) =>
+  decodeURIComponent(
+    (await page
+      .getByAltText(`Vista previa de la página ${n}`, { exact: true })
+      .getAttribute("src"))!
+      .split(",")
+      .slice(1)
+      .join(","),
+  );
+test("uploaded templates keep their artwork, replace dates, persist and export", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await page.getByLabel("Nombre de la agenda").fill("Agenda de prueba");
-  await page.getByLabel("Desde", { exact: true }).fill("2028-02-28");
-  await page.getByLabel("Hasta", { exact: true }).fill("2028-03-05");
-  await page.getByRole("radio", { name: "Una semana en dos caras" }).check();
+  await expect(
+    page.getByRole("button", { name: "Mi agenda", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByLabel("Nombre de la agenda")
+    .fill("Calendario con mis plantillas");
+  await page.getByLabel("Desde", { exact: true }).fill("2026-09-01");
+  await page.getByLabel("Hasta", { exact: true }).fill("2026-10-04");
   await page.getByRole("button", { name: "Continuar con los diseños" }).click();
-  const png = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
-    "base64",
-  );
   await page
-    .getByLabel("Portada", { exact: true })
-    .setInputFiles({ name: "portada.png", mimeType: "image/png", buffer: png });
-  await expect(page.getByText("portada.png")).toBeVisible();
-  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
-  await page.getByLabel("Ir a una fecha").fill("2028-02-29");
-  await page
-    .getByLabel("Notas del día")
-    .fill("Reunión a las 10:00. Café, ilusión y próximos pasos. ✓");
-  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
-  await page.reload();
-  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
-  await page.getByLabel("Ir a una fecha").fill("2028-02-29");
-  await expect(page.getByLabel("Notas del día")).toContainText("Reunión");
-  await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.screenshot({ path: "test-results/desktop.png", fullPage: true });
-  const backupEvent = page.waitForEvent("download");
+    .getByRole("button", { name: "Cargar las dos plantillas de ejemplo" })
+    .click();
+  await expect(page.getByText("4 días · 9 campos")).toBeVisible({
+    timeout: 60000,
+  });
+  await expect(page.getByText("3 días · 6 campos")).toBeVisible({
+    timeout: 60000,
+  });
+  await expect(
+    page.getByRole("button", { name: "Exportar PDF" }),
+  ).toBeEnabled();
+  const first = await source(page, 2);
+  expect(first).toContain("septiembre</text>");
+  expect(first).toContain("Martes</text>");
+  expect(first).not.toContain("Lunes</text>");
+  expect(first).not.toContain("<line");
+  expect(first).toContain(">1</text>");
+  await page.screenshot({
+    path: "test-results/template-september.png",
+    fullPage: true,
+  });
+  await page.getByLabel("Ir a página").selectOption("11");
+  expect(await source(page, 12)).toContain("octubre</text>");
+  expect(await source(page, 12)).toContain("Jueves</text>");
+  expect(await source(page, 12)).not.toContain("Miércoles</text>");
+  await page.screenshot({
+    path: "test-results/template-october.png",
+    fullPage: true,
+  });
+  const downloadEvent = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Guardar copia", exact: true })
     .click();
-  const backup = await backupEvent;
+  const backup = await downloadEvent;
   const backupPath = await backup.path();
-  expect(
-    JSON.parse(await readFile(backupPath!, "utf8")).notes["2028-02-29"],
-  ).toContain("Reunión");
-  await page.getByRole("button", { name: "Crear agenda", exact: true }).click();
+  const p = JSON.parse(await readFile(backupPath!, "utf8"));
+  expect(p.assets.inside.template.days).toHaveLength(4);
+  expect(p.spreadSplit).toBe(4);
+  await writeFile("test-results/template-project.json", JSON.stringify(p));
+  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "2 Diseños" }).click();
+  await expect(page.getByText("4 días · 9 campos")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Ajustar fechas", exact: true })
+    .first()
+    .click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByLabel("Campo o zona").selectOption({ label: "Mes" });
+  await page.getByLabel("Tamaño del texto", { exact: true }).fill("28");
+  await page.getByRole("button", { name: "Ver resultado" }).click();
   await page.getByRole("button", { name: "3 Impresión" }).click();
-  await page.getByLabel("Incluir mis notas en el PDF").check();
   const pdfEvent = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Descargar PDF", exact: true })
     .click();
   const pdf = await pdfEvent;
-  await pdf.saveAs("test-results/agenda.pdf");
-  const doc = await PDFDocument.load(await readFile("test-results/agenda.pdf"));
-  expect(doc.getPageCount()).toBe(6);
+  await pdf.saveAs("test-results/template-calendar.pdf");
+  const doc = await PDFDocument.load(
+    await readFile("test-results/template-calendar.pdf"),
+  );
+  expect(doc.getPageCount()).toBe(14);
   expect(doc.getPage(0).getWidth()).toBeCloseTo(419.528);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
+  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     390,
   );
-  await page.getByRole("button", { name: "Mostrar configuración" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Lista para imprimir" }),
-  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/template-mobile.png",
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });
-test("invalid interval disables export and invalid backups show an error", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByLabel("Desde", { exact: true }).fill("2027-01-01");
-  await page.getByLabel("Hasta", { exact: true }).fill("2026-01-01");
-  await expect(
-    page.getByRole("button", { name: "Exportar PDF" }),
-  ).toBeDisabled();
-  await page.locator('input[accept="application/json,.json"]').setInputFiles({
-    name: "bad.json",
-    mimeType: "application/json",
-    buffer: Buffer.from('{"version":1}'),
-  });
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Esta copia no es válida" }),
-  ).toBeVisible();
-});
-
-test("switch views, navigate facing pages and write on the right page", async ({
+test("single and double page navigation, invalid dates and backup validation", async ({
   page,
 }) => {
   await page.goto("/");
   await page.getByLabel("Desde", { exact: true }).fill("2028-03-06");
   await page.getByLabel("Hasta", { exact: true }).fill("2028-03-19");
+  await page.getByLabel("Reparto de la semana").selectOption("4");
   await expect(page.locator(".paper")).toHaveCount(1);
   await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
   await expect(page.locator(".paper")).toHaveCount(2);
-  await expect(
-    page.getByAltText("Vista previa de la página 2", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByAltText("Vista previa de la página 3", { exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Escribir el 2028-03-09", exact: true })
-    .click();
-  await page.getByLabel("Notas del día").fill("Nota en la página derecha");
-  await expect(page.getByLabel("Ir a una fecha")).toHaveValue("2028-03-09");
-  await page.getByRole("button", { name: "Una página", exact: true }).click();
-  await expect(page.locator(".paper")).toHaveCount(1);
-  await expect(
-    page.getByAltText("Vista previa de la página 3", { exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
   await page
     .getByRole("button", { name: "Página siguiente", exact: true })
     .click();
   await expect(
     page.getByAltText("Vista previa de la página 4", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByAltText("Vista previa de la página 5", { exact: true }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "test-results/double-desktop.png",
-    fullPage: true,
-  });
   await page
     .getByRole("button", { name: "Página siguiente", exact: true })
     .click();
@@ -131,58 +124,21 @@ test("switch views, navigate facing pages and write on the right page", async ({
     page.getByRole("button", { name: "Página siguiente", exact: true }),
   ).toBeDisabled();
   await page.getByLabel("Ir a página").selectOption("0");
-  await expect(page.locator(".paper")).toHaveCount(1);
   await expect(
     page.getByRole("button", { name: "Página anterior", exact: true }),
   ).toBeDisabled();
+  await page.getByLabel("Hasta", { exact: true }).fill("2026-01-01");
+  await expect(
+    page.getByRole("button", { name: "Exportar PDF" }),
+  ).toBeDisabled();
   await page
-    .getByRole("button", { name: "Página siguiente", exact: true })
-    .click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".paper")).toHaveCount(2);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
-    390,
-  );
-  const papers = await page.locator(".paper").all();
-  const left = await papers[0].boundingBox(),
-    right = await papers[1].boundingBox();
-  expect(left!.y).toBe(right!.y);
-  expect(right!.x).toBeGreaterThan(left!.x);
-  await page.screenshot({
-    path: "test-results/double-mobile.png",
-    fullPage: true,
-  });
-});
-
-test("choose Monday–Thursday split and retain it after reload", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByLabel("Desde", { exact: true }).fill("2028-03-06");
-  await page.getByLabel("Hasta", { exact: true }).fill("2028-03-12");
-  await page.getByLabel("Reparto de la semana").selectOption("4");
-  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
-  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Escribir el 2028-03-09", exact: true })
-    .click();
-  await expect(page.getByLabel("Ir a página")).toHaveValue("1");
-  await page.getByLabel("Notas del día").fill("Jueves en la cara izquierda");
-  await page
-    .getByRole("button", { name: "Escribir el 2028-03-10", exact: true })
-    .click();
-  await expect(page.getByLabel("Ir a página")).toHaveValue("2");
-  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
-  await page.reload();
-  await expect(page.getByLabel("Reparto de la semana")).toHaveValue("4");
-  await page.getByLabel("Reparto de la semana").selectOption("3");
-  await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
-  await page.getByRole("button", { name: "Mi agenda", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Escribir el 2028-03-09", exact: true })
-    .click();
-  await expect(page.getByLabel("Ir a página")).toHaveValue("2");
-  await expect(page.getByLabel("Notas del día")).toHaveValue(
-    "Jueves en la cara izquierda",
-  );
+    .locator('input[accept="application/json,.json"]')
+    .setInputFiles({
+      name: "bad.json",
+      mimeType: "application/json",
+      buffer: Buffer.from('{"version":1}'),
+    });
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Esta copia no es válida" }),
+  ).toBeVisible();
 });

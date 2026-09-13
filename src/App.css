@@ -603,3 +603,139 @@ progress {
     gap: 8px;
   }
 }
+
+.template-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  margin: -4px 0 18px;
+  color: #78716c;
+}
+.template-info button {
+  font-size: 12px;
+  color: #92400e;
+  text-decoration: underline;
+  padding: 4px;
+}
+.detection-status {
+  padding: 12px 24px;
+  background: #fff7ed;
+  font-size: 13px;
+}
+.template-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0006;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.template-dialog {
+  width: min(1100px, 100%);
+  max-height: 95vh;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.template-dialog header,
+.template-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e7e5e4;
+}
+.template-dialog header p {
+  font-size: 12px;
+  color: #78716c;
+  margin: 4px 0 0;
+}
+.template-dialog footer {
+  border-top: 1px solid #e7e5e4;
+  border-bottom: 0;
+  font-size: 12px;
+}
+.template-editor-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  overflow: auto;
+}
+.template-editor-controls {
+  padding: 20px;
+  border-right: 1px solid #e7e5e4;
+  overflow: auto;
+}
+.template-editor-controls p {
+  font-size: 12px;
+}
+.template-editor-controls .secondary {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.template-editor-canvas {
+  overflow: auto;
+  background: #f3f1ed;
+  padding: 20px;
+}
+.template-source {
+  position: relative;
+  max-width: 640px;
+  margin: auto;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.template-source img {
+  width: 100%;
+  display: block;
+}
+.template-region {
+  position: absolute;
+  border: 1px solid #b4530999;
+  pointer-events: none;
+}
+.template-region.selected {
+  border: 2px solid #b45309;
+  background: #b4530915;
+}
+.rect-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.template-editor-controls hr {
+  border: 0;
+  border-top: 1px solid #e7e5e4;
+  margin: 12px 0 20px;
+}
+@media (max-width: 640px) {
+  .template-dialog-backdrop {
+    padding: 6px;
+  }
+  .template-editor-body {
+    grid-template-columns: 1fr;
+  }
+  .template-editor-canvas {
+    order: -1;
+    overflow: visible;
+  }
+  .template-editor-controls {
+    overflow: visible;
+  }
+  .template-dialog header,
+  .template-dialog footer {
+    padding: 12px;
+  }
+  .template-dialog footer span {
+    max-width: 55%;
+  }
+  .header {
+    padding-bottom: 14px;
+  }
+}
