@@ -739,3 +739,25 @@ progress {
     padding-bottom: 14px;
   }
 }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.session-note {
+  margin: auto 0 0;
+  padding: 20px 24px;
+  border-top: 1px solid #e7e5e4;
+  color: #78716c;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .header-actions {
+    gap: 6px;
+  }
+  .header-actions button {
+    font-size: 11px;
+    padding: 8px 7px;
+  }
+}

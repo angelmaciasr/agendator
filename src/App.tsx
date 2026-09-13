@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { get, set } from "idb-keyval";
+import { useEffect, useState } from "react";
+import { del } from "idb-keyval";
 import {
   BookOpen,
   ChevronLeft,
@@ -7,7 +7,6 @@ import {
   Download,
   Upload,
   FileImage,
-  Check,
   Menu,
   X,
 } from "lucide-react";
@@ -16,12 +15,11 @@ import {
   pages,
   svg,
   validate,
-  validProject,
   format,
   type Project,
   type Asset,
 } from "./planner";
-import { download, exportPDF } from "./export";
+import { exportPDF } from "./export";
 import "./App.css";
 import TemplateEditor from "./TemplateEditor";
 import { templateIssue, type Template } from "./template";
@@ -29,9 +27,6 @@ const steps = ["Calendario", "Diseños", "Impresión"];
 function App() {
   const [view, setView] = useState<"single" | "double">("single");
   const [project, update] = useState<Project>(defaults);
-  const [storedProject, setStoredProject] = useState<Project | null>(null);
-  const [loaded, setLoaded] = useState(false),
-    [saved, setSaved] = useState("Cargando…");
   const [step, setStep] = useState(0),
     [index, setIndex] = useState(1),
     [error, setError] = useState("");
@@ -39,32 +34,22 @@ function App() {
     [progress, setProgress] = useState(0),
     [mobileOpen, setMobileOpen] = useState(false);
   const [detecting, setDetecting] = useState("");
+  const [loadingExamples, setLoadingExamples] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  const restore = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    get("agendator-project")
-      .then((p) => {
-        if (validProject(p)) update(p);
-        setSaved("Guardado en este navegador");
-      })
-      .catch(() => setSaved("No se pudo leer el almacenamiento"))
-      .finally(() => setLoaded(true));
+    // Remove the project saved by earlier versions; never restore or persist projects.
+    void del("agendator-project").catch(() => {});
   }, []);
-  useEffect(() => {
-    if (!loaded) return;
-    const timer = setTimeout(() => {
-      set("agendator-project", project)
-        .then(() => {
-          setStoredProject(project);
-          setSaved("Guardado en este navegador");
-        })
-        .catch(() => {
-          setStoredProject(project);
-          setSaved("No se pudo guardar. Descarga una copia.");
-        });
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [project, loaded]);
+  function createAnother() {
+    update(defaults());
+    setStep(0);
+    setIndex(1);
+    setView("single");
+    setEditing(null);
+    setError("");
+    setProgress(0);
+    setMobileOpen(true);
+  }
   const change = <K extends keyof Project>(k: K, v: Project[K]) =>
     update((p) => ({ ...p, [k]: v }));
   const all = pages(project),
@@ -166,26 +151,31 @@ function App() {
     }
   }
   async function loadExamples() {
-    for (const [target, name] of [
-      ["inside", "izquierda"],
-      ["right", "derecha"],
-    ]) {
-      const response = await fetch(
-        `${import.meta.env.BASE_URL}templates/semana-${name}.png`,
-      );
-      if (!response.ok) {
-        setError("No se pudo cargar la plantilla de ejemplo.");
-        return;
+    setLoadingExamples(true);
+    try {
+      for (const [target, name] of [
+        ["inside", "izquierda"],
+        ["right", "derecha"],
+      ]) {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}templates/semana-${name}.png`,
+        );
+        if (!response.ok) {
+          setError("No se pudo cargar la plantilla de ejemplo.");
+          return;
+        }
+        await upload(
+          new File([await response.blob()], `semana-${name}.png`, {
+            type: "image/png",
+          }),
+          target,
+        );
       }
-      await upload(
-        new File([await response.blob()], `semana-${name}.png`, {
-          type: "image/png",
-        }),
-        target,
-      );
+      setView("double");
+      go(1);
+    } finally {
+      setLoadingExamples(false);
     }
-    setView("double");
-    go(1);
   }
   const editingAsset =
     editing === "override" && page
@@ -218,7 +208,7 @@ function App() {
           </span>
           <input
             aria-label={title}
-            disabled={!!detecting}
+            disabled={!!detecting || loadingExamples}
             type="file"
             accept="image/png,image/jpeg,image/webp"
             onChange={(e) => {
@@ -253,7 +243,6 @@ function App() {
       )}
     </div>
   );
-  if (!loaded) return <main className="loading">Abriendo tu agenda…</main>;
   return (
     <div className="app">
       <header className="header">
@@ -261,14 +250,23 @@ function App() {
           <BookOpen size={25} />
           <span>agendator</span>
         </div>
-        <button
-          className="primary export-header"
-          onClick={generate}
-          disabled={busy || !!dateError || !!detecting || !!mappingError}
-        >
-          <Download size={17} />
-          {busy ? `${progress}%` : "Exportar PDF"}
-        </button>
+        <div className="header-actions">
+          <button
+            className="secondary"
+            disabled={busy || !!detecting || loadingExamples}
+            onClick={createAnother}
+          >
+            Crear otra
+          </button>
+          <button
+            className="primary export-header"
+            onClick={generate}
+            disabled={busy || !!dateError || !!detecting || !!mappingError}
+          >
+            <Download size={17} />
+            {busy ? `${progress}%` : "Exportar PDF"}
+          </button>
+        </div>
       </header>
       <div className="subheader">
         <button
@@ -279,10 +277,6 @@ function App() {
           <Menu size={20} />
         </button>
         <span>{project.title}</span>
-        <span className="save-status">
-          <Check size={14} />
-          {storedProject === project ? saved : "Guardando…"}
-        </span>
       </div>
       {error && (
         <div className="error" role="alert">
@@ -477,7 +471,7 @@ function App() {
                 </p>
                 <button
                   className="secondary"
-                  disabled={!!detecting}
+                  disabled={!!detecting || loadingExamples}
                   onClick={() => {
                     void loadExamples().catch(() => {
                       setDetecting("");
@@ -555,52 +549,10 @@ function App() {
               </section>
             )}
           </>
-          <div className="backup">
-            <button
-              onClick={() =>
-                download(
-                  new Blob([JSON.stringify(project)], {
-                    type: "application/json",
-                  }),
-                  "mi-agenda.json",
-                )
-              }
-            >
-              <Download size={15} />
-              Guardar copia
-            </button>
-            <button onClick={() => restore.current?.click()}>
-              <Upload size={15} />
-              Abrir copia
-            </button>
-            <input
-              ref={restore}
-              hidden
-              type="file"
-              accept="application/json,.json"
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                try {
-                  if (f.size > 150 * 1024 * 1024) throw new Error();
-                  const value: unknown = JSON.parse(await f.text());
-                  if (!validProject(value)) throw new Error();
-                  update(value);
-                  go(1);
-                  setError("");
-                } catch {
-                  setError(
-                    "Esta copia no es válida. Elige un JSON exportado por Agendator.",
-                  );
-                }
-              }}
-            />
-            <p>
-              Plantillas y ajustes guardados en este navegador. Descarga una
-              copia para llevarlos a otro dispositivo.
-            </p>
-          </div>
+          <p className="session-note">
+            Al terminar, descarga el PDF o pulsa Crear otra. Si recargas o
+            cierras esta página, se pierde el trabajo actual.
+          </p>
         </aside>
         <main className="preview-area">
           <div className="preview-toolbar">

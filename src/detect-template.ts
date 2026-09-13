@@ -69,6 +69,7 @@ export async function detectTemplate(
     .href;
   const worker = await createWorker("spa", 1, {
     workerPath: root + "worker.min.js",
+    cacheMethod: "none",
     langPath: root.replace(/\/$/, ""),
     corePath: root,
     logger: (m) => {

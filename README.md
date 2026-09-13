@@ -32,7 +32,7 @@ La imagen de plantilla se conserva como fondo. Se cubren únicamente los campos 
 
 El reconocimiento utiliza [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/docs/api.md) en el navegador y está pensado para nombres de días y meses en español. No garantiza reconocer todos los diseños: conviene revisar las zonas, especialmente si hay columnas, fondos decorados, texto poco legible o tipografías inusuales. Puedes definir manualmente todos los campos y zonas. La sustitución usa una tipografía serif o sans serif ajustable; no extrae la fuente de una imagen. Los colores de fondo planos pueden ajustarse; no se reconstruyen texturas detrás de los textos.
 
-Sin plantilla se puede previsualizar y exportar el diseño básico. Las copias antiguas siguen siendo compatibles, pero una imagen antigua sin campos necesita volver a cargarse para reconocer sus fechas.
+Sin plantilla se puede previsualizar y exportar el diseño básico. El botón **Crear otra** vacía las plantillas y los ajustes para empezar un calendario nuevo.
 
 ## Impresión
 
@@ -44,7 +44,7 @@ El PDF rasteriza cada página a 300 ppp. No contiene texto seleccionable, imposi
 
 ## Datos
 
-Plantillas y ajustes se guardan en IndexedDB, solo en este navegador. Puedes descargar una copia JSON y abrirla en otro dispositivo. Abrir una copia sustituye el proyecto actual. No hay sincronización, cuentas ni servidor de datos. El OCR utiliza recursos incluidos en la aplicación, sin enviar tus imágenes a terceros. No se calculan festivos locales.
+Plantillas y ajustes se mantienen únicamente en memoria mientras está abierta la página. No se guardan ni se recuperan automáticamente. **Crear otra**, recargar o cerrar la página descarta el proyecto; descarga antes el PDF si quieres conservar el resultado. Al abrir la aplicación se elimina el proyecto que pudieran haber guardado versiones anteriores. No hay sincronización, cuentas ni servidor de datos. El OCR utiliza recursos incluidos en la aplicación, sin enviar tus imágenes a terceros. No se calculan festivos locales.
 
 ## Desarrollo
 
@@ -62,7 +62,7 @@ npx playwright install chromium
 CI=1 npm run test:e2e
 ```
 
-GitHub Actions comprueba calendario, bisiestos, cortes de mes, reparto de caras, reconocimiento de las plantillas de referencia, persistencia de sus campos, edición, exportación PDF y navegación móvil. `dist/` se puede publicar en un servidor estático con HTTPS; este repositorio no despliega automáticamente la aplicación.
+GitHub Actions comprueba calendario, bisiestos, cortes de mes, reparto de caras, reconocimiento de las plantillas de referencia, edición de campos, reinicio sin persistencia, exportación PDF y navegación móvil. `dist/` se puede publicar en un servidor estático con HTTPS; este repositorio no despliega automáticamente la aplicación.
 
 ## Arquitectura
 

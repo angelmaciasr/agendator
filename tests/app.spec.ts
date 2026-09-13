@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { PDFDocument } from "pdf-lib";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 const source = async (page: import("@playwright/test").Page, n: number) =>
   decodeURIComponent(
     (await page
@@ -10,7 +10,7 @@ const source = async (page: import("@playwright/test").Page, n: number) =>
       .slice(1)
       .join(","),
   );
-test("uploaded templates keep their artwork, replace dates, persist and export", async ({
+test("uploaded templates keep their artwork, replace dates, export and start another", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -55,20 +55,6 @@ test("uploaded templates keep their artwork, replace dates, persist and export",
     path: "test-results/template-october.png",
     fullPage: true,
   });
-  const downloadEvent = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "Guardar copia", exact: true })
-    .click();
-  const backup = await downloadEvent;
-  const backupPath = await backup.path();
-  const p = JSON.parse(await readFile(backupPath!, "utf8"));
-  expect(p.assets.inside.template.days).toHaveLength(4);
-  expect(p.spreadSplit).toBe(4);
-  await writeFile("test-results/template-project.json", JSON.stringify(p));
-  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
-  await page.reload();
-  await page.getByRole("button", { name: "2 Diseños" }).click();
-  await expect(page.getByText("4 días · 9 campos")).toBeVisible();
   await page
     .getByRole("button", { name: "Ajustar fechas", exact: true })
     .first()
@@ -102,8 +88,6 @@ test("uploaded templates keep their artwork, replace dates, persist and export",
   await expect(
     page.getByRole("option").filter({ hasText: "Vista mensual" }),
   ).toHaveCount(2);
-  await expect(page.getByText("Guardado en este navegador")).toBeVisible();
-  await page.reload();
   await expect(
     page.getByLabel("Añadir vista mensual al inicio de cada mes"),
   ).toBeChecked();
@@ -131,9 +115,23 @@ test("uploaded templates keep their artwork, replace dates, persist and export",
     path: "test-results/template-mobile.png",
     fullPage: true,
   });
+  await page.getByRole("button", { name: "Crear otra", exact: true }).click();
+  await expect(page.getByLabel("Nombre de la agenda")).toHaveValue("Mi agenda");
+  await expect(
+    page.getByLabel("Añadir vista mensual al inicio de cada mes"),
+  ).not.toBeChecked();
+  await expect(page.locator(".paper")).toHaveCount(1);
+  await page.getByRole("button", { name: "2 Diseños" }).click();
+  await expect(
+    page.getByRole("button", { name: "Ajustar fechas", exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: "test-results/create-another-mobile.png",
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });
-test("single and double page navigation, invalid dates and backup validation", async ({
+test("single and double page navigation, invalid dates and no browser persistence", async ({
   page,
 }) => {
   await page.goto("/");
@@ -164,12 +162,43 @@ test("single and double page navigation, invalid dates and backup validation", a
   await expect(
     page.getByRole("button", { name: "Exportar PDF" }),
   ).toBeDisabled();
-  await page.locator('input[accept="application/json,.json"]').setInputFiles({
-    name: "bad.json",
-    mimeType: "application/json",
-    buffer: Buffer.from('{"version":1}'),
-  });
+  await page.getByLabel("Nombre de la agenda").fill("No guardar este proyecto");
+  await page.reload();
+  await expect(page.getByLabel("Nombre de la agenda")).toHaveValue("Mi agenda");
   await expect(
-    page.getByRole("alert").filter({ hasText: "Esta copia no es válida" }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Exportar PDF" }),
+  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Guardar copia" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "Abrir copia" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Guardado en este navegador")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const req = indexedDB.open("keyval-store");
+            req.onsuccess = () => {
+              const db = req.result;
+              if (!db.objectStoreNames.contains("keyval")) {
+                db.close();
+                resolve(null);
+                return;
+              }
+              const read = db
+                .transaction("keyval", "readonly")
+                .objectStore("keyval")
+                .get("agendator-project");
+              read.onsuccess = () => {
+                db.close();
+                resolve(read.result ?? null);
+              };
+            };
+          }),
+      ),
+    )
+    .toBeNull();
 });
