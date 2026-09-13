@@ -30,6 +30,7 @@ import "./App.css";
 const steps = ["Calendario", "Diseños", "Impresión"];
 function App() {
   const [project, update] = useState<Project>(defaults);
+  const [storedProject, setStoredProject] = useState<Project | null>(null);
   const [loaded, setLoaded] = useState(false),
     [saved, setSaved] = useState("Cargando…");
   const [step, setStep] = useState(0),
@@ -55,8 +56,14 @@ function App() {
     if (!loaded) return;
     const timer = setTimeout(() => {
       set("agendator-project", project)
-        .then(() => setSaved("Guardado en este navegador"))
-        .catch(() => setSaved("No se pudo guardar. Descarga una copia."));
+        .then(() => {
+          setStoredProject(project);
+          setSaved("Guardado en este navegador");
+        })
+        .catch(() => {
+          setStoredProject(project);
+          setSaved("No se pudo guardar. Descarga una copia.");
+        });
     }, 350);
     return () => clearTimeout(timer);
   }, [project, loaded]);
@@ -197,7 +204,7 @@ function App() {
         <span>{project.title}</span>
         <span className="save-status">
           <Check size={14} />
-          {saved}
+          {storedProject === project ? saved : "Guardando…"}
         </span>
       </div>
       {error && (
