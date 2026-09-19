@@ -259,18 +259,55 @@ test("monthly grid aligns weekdays and handles leap years and six-row months", a
 for (const layout of ["week", "spread"] as Layout[])
   for (const spreadSplit of [3, 4] as const)
     test(`${layout}/${spreadSplit}: next-month context crosses year boundaries without duplicating notes`, async () => {
-      const { displayDays, renderTemplate } = await import("../src/template.ts");
-      const p = { ...defaults(), layout, spreadSplit, start: "2026-12-28", end: "2027-01-03", notes: { "2027-01-01": "Solo en enero" } };
+      const { displayDays, renderTemplate } =
+        await import("../src/template.ts");
+      const p = {
+        ...defaults(),
+        layout,
+        spreadSplit,
+        start: "2026-12-28",
+        end: "2027-01-03",
+        notes: { "2027-01-01": "Solo en enero" },
+      };
       const all = pages(p).filter((page) => page.kind === "inside");
       const december = all.filter((page) => page.month === "2026-12");
-      assert.deepEqual(december.flatMap(displayDays), ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03"]);
-      const context = december.find((page) => displayDays(page).includes("2027-01-01"))!;
+      assert.deepEqual(december.flatMap(displayDays), [
+        "2026-12-28",
+        "2026-12-29",
+        "2026-12-30",
+        "2026-12-31",
+        "2027-01-01",
+        "2027-01-02",
+        "2027-01-03",
+      ]);
+      const context = december.find((page) =>
+        displayDays(page).includes("2027-01-01"),
+      )!;
       assert.ok(svg(p, context).includes('<g opacity="0.2">'));
       assert.ok(!svg(p, context).includes("Solo en enero"));
       const january = all.find((page) => page.days.includes("2027-01-01"))!;
       assert.ok(svg(p, january).includes("Solo en enero"));
-      const field = { x: 50, y: 100, width: 120, height: 30, fontSize: 20, color: "#777777", background: "#ffffff", font: "serif" as const, align: "left" as const, weekday: 4 };
-      const template = { fields: [{ ...field, kind: "number" as const }, { ...field, y: 140, kind: "weekday" as const }], days: [{ weekday: 4, area: { x: 50, y: 100, width: 600, height: 200 } }] };
+      const field = {
+        x: 50,
+        y: 100,
+        width: 120,
+        height: 30,
+        fontSize: 20,
+        color: "#777777",
+        background: "#ffffff",
+        font: "serif" as const,
+        align: "left" as const,
+        weekday: 4,
+      };
+      const template = {
+        fields: [
+          { ...field, kind: "number" as const },
+          { ...field, y: 140, kind: "weekday" as const },
+        ],
+        days: [
+          { weekday: 4, area: { x: 50, y: 100, width: 600, height: 200 } },
+        ],
+      };
       for (const end of [p.end, "2026-12-31"]) {
         const output = renderTemplate({ ...p, end }, context, template, true);
         assert.ok(output.includes('opacity="0.2">1</text>'));
@@ -279,3 +316,193 @@ for (const layout of ["week", "spread"] as Layout[])
         assert.ok(!output.includes("Solo en enero"));
       }
     });
+
+test("design guides measure rotated bounds and snap to page and nearby elements", async () => {
+  const { bounds, snapElement } = await import("../src/design-geometry.ts");
+  const e = {
+    id: "a",
+    kind: "rect" as const,
+    x: 229,
+    y: 454,
+    width: 280,
+    height: 140,
+    rotation: 0,
+    color: "#292524",
+    fontSize: 36,
+    font: "sans-serif" as const,
+    text: "",
+    src: "",
+  };
+  const centered = snapElement(e, [], 5);
+  assert.equal(centered.element.x, 230);
+  assert.equal(centered.element.y, 455);
+  assert.deepEqual(centered.guides, { x: 370, y: 525 });
+  assert.equal(snapElement({ ...e, x: 220 }, [], 2.5).element.x, 220);
+  const rotated = bounds({ ...e, rotation: 90 });
+  assert.ok(Math.abs(rotated.width - 140) < 0.001);
+  assert.ok(Math.abs(rotated.height - 280) < 0.001);
+  const aligned = snapElement(
+    { ...e, x: 102, y: 200 },
+    [{ ...e, id: "b", x: 100, y: 700 }],
+    5,
+  );
+  assert.equal(aligned.element.x, 100);
+  assert.equal(aligned.element.y, 200);
+});
+
+test("side resizing preserves the opposite edge and the other dimension", async () => {
+  const { resizeElement } = await import("../src/design-geometry.ts");
+  const e = {
+    id: "a",
+    kind: "rect" as const,
+    x: 100,
+    y: 150,
+    width: 280,
+    height: 140,
+    rotation: 0,
+    color: "#292524",
+    fontSize: 36,
+    font: "sans-serif" as const,
+    text: "",
+    src: "",
+  };
+  const left = resizeElement(e, "w", -40, 20);
+  assert.equal(left.x, 60);
+  assert.equal(left.width, 320);
+  assert.equal(left.height, 140);
+  assert.equal(left.y, 150);
+  const top = resizeElement(e, "n", 30, -50);
+  assert.equal(top.y, 100);
+  assert.equal(top.height, 190);
+  assert.equal(top.width, 280);
+  const right = resizeElement(e, "e", 40, 20);
+  assert.equal(right.width, 320);
+  assert.equal(right.x, 100);
+  assert.equal(right.height, 140);
+  const bottom = resizeElement(e, "s", 40, 20);
+  assert.equal(bottom.height, 160);
+  assert.equal(bottom.width, 280);
+  const corner = resizeElement(e, "se", 40, 20);
+  assert.equal(corner.width, 320);
+  assert.equal(corner.height, 160);
+  assert.equal(corner.x, 100);
+  assert.equal(corner.y, 150);
+  const rotated = resizeElement({ ...e, rotation: 90 }, "e", 0, 40);
+  assert.equal(rotated.width, 320);
+  assert.equal(rotated.height, 140);
+  assert.equal(rotated.x, 80);
+  assert.equal(rotated.y, 170);
+  const clamped = resizeElement(e, "w", 1000, 0);
+  assert.equal(clamped.width, 8);
+  assert.equal(clamped.x + clamped.width, e.x + e.width);
+});
+
+test("designer placeholders show the complete chosen split independently of real dates", async () => {
+  const { calendarPlaceholder } = await import("../src/design-preview.ts");
+  const decode = (s: string) => decodeURIComponent(s.slice(s.indexOf(",") + 1));
+  for (const split of [3, 4] as const) {
+    const p = {
+      ...defaults(),
+      start: "2026-09-09",
+      end: "2026-09-09",
+      spreadSplit: split,
+    };
+    const left = decode(calendarPlaceholder(p, "inside"));
+    const right = decode(calendarPlaceholder(p, "right"));
+    const names = [
+      "Lunes",
+      "Martes",
+      "Miércoles",
+      "Jueves",
+      "Viernes",
+      "Sábado",
+      "Domingo",
+    ];
+    names.forEach((name, i) => {
+      assert.equal(left.includes(`${name} XX`), i < split);
+      assert.equal(right.includes(`${name} XX`), i >= split);
+    });
+    assert.ok(left.includes("Mes YYYY"));
+    assert.ok(!left.includes("2026"));
+    assert.ok(!left.includes('opacity="0.2"'));
+  }
+  const week = decode(
+    calendarPlaceholder({ ...defaults(), layout: "week" }, "inside"),
+  );
+  assert.equal((week.match(/ XX<\/text>/g) || []).length, 7);
+  const day = decode(
+    calendarPlaceholder({ ...defaults(), layout: "day" }, "inside"),
+  );
+  assert.ok(day.includes("Día XX"));
+  assert.equal((day.match(/ XX<\/text>/g) || []).length, 1);
+});
+
+test("editable calendar resolves dates at moved positions and hides missing weekdays", async () => {
+  const { editableCalendarElements } = await import("../src/design-preview.ts");
+  const p = {
+    ...defaults(),
+    start: "2026-09-09",
+    end: "2026-09-13",
+    spreadSplit: 4 as const,
+  };
+  const elements = editableCalendarElements(p, "inside").map((e) =>
+    e.calendar?.kind === "number" ? { ...e, x: 400 } : e,
+  );
+  p.assets.inside = {
+    name: "Editable",
+    data: "data:image/png;base64,AA==",
+    design: {
+      background: "#ffffff",
+      showCalendar: true,
+      editableCalendar: true,
+      elements,
+    },
+  };
+  const page = pages(p).find((page) => page.kind === "inside")!;
+  const result = svg(p, page, false);
+  assert.ok(result.includes("translate(400"));
+  assert.ok(result.includes(">9</text>"));
+  assert.ok(result.includes(">2026</text>"));
+  assert.ok(!result.includes(">Lunes</text>"));
+  assert.ok(!result.includes("XX"));
+  p.assets.inside.design!.showCalendar = false;
+  assert.ok(!svg(p, page, false).includes("<text"));
+});
+
+test("writing areas render only explicit lines or grids and calendar creation adds no ruled background", async () => {
+  const { editableCalendarElements } = await import("../src/design-preview.ts");
+  const { renderDesign } = await import("../src/design.ts");
+  const elements = editableCalendarElements(defaults(), "inside");
+  assert.ok(!elements.some((e) => /^calendar-\d+-line-/.test(e.id)));
+  const area = {
+    id: "area",
+    kind: "writing" as const,
+    x: 10,
+    y: 20,
+    width: 100,
+    height: 60,
+    rotation: 0,
+    color: "#a8a29e",
+    fontSize: 17,
+    font: "sans-serif" as const,
+    text: "",
+    src: "",
+    spacing: 20,
+    writingStyle: "lines" as const,
+  };
+  const design = {
+    background: "#ffffff",
+    showCalendar: false,
+    elements: [area],
+  };
+  const lined = renderDesign(design);
+  assert.ok(lined.includes('data-writing-area="lines"'));
+  assert.ok(lined.includes("M 0 20 H 100"));
+  assert.ok(!lined.includes(" V "));
+  const grid = renderDesign({
+    ...design,
+    elements: [{ ...area, writingStyle: "grid" }],
+  });
+  assert.ok(grid.includes("M 20 0 V 60"));
+  assert.ok(grid.includes('data-writing-area="grid"'));
+});

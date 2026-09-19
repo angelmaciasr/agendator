@@ -1,3 +1,9 @@
+import {
+  assetThumbnail,
+  editableCalendarElements,
+  calendarPlaceholder,
+  type DesignTarget,
+} from "./design-preview";
 import { useEffect, useState } from "react";
 import { del } from "idb-keyval";
 import {
@@ -21,9 +27,10 @@ import {
 } from "./planner";
 import { exportPDF } from "./export";
 import "./App.css";
+import PageDesigner from "./PageDesigner";
 import TemplateEditor from "./TemplateEditor";
 import { templateIssue, type Template } from "./template";
-const steps = ["Calendario", "Diseños", "Impresión"];
+const steps = ["Calendario", "Plantillas", "Vista previa"];
 function App() {
   const [view, setView] = useState<"single" | "double">("single");
   const [project, update] = useState<Project>(defaults);
@@ -34,7 +41,8 @@ function App() {
     [progress, setProgress] = useState(0),
     [mobileOpen, setMobileOpen] = useState(false);
   const [detecting, setDetecting] = useState("");
-  const [loadingExamples, setLoadingExamples] = useState(false);
+  const [designing, setDesigning] = useState<string | null>(null);
+  const [furthestStep, setFurthestStep] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   useEffect(() => {
     // Remove the project saved by earlier versions; never restore or persist projects.
@@ -43,9 +51,11 @@ function App() {
   function createAnother() {
     update(defaults());
     setStep(0);
+    setFurthestStep(0);
     setIndex(1);
     setView("single");
     setEditing(null);
+    setDesigning(null);
     setError("");
     setProgress(0);
     setMobileOpen(true);
@@ -56,6 +66,13 @@ function App() {
     actualIndex = Math.min(index, Math.max(0, all.length - 1)),
     page = all[actualIndex],
     dateError = validate(project);
+  function navigateStep(next: number) {
+    if (busy || detecting || (next > step && dateError)) return;
+    setStep(next);
+    setFurthestStep((previous) => Math.max(previous, next));
+    setMobileOpen(false);
+    window.scrollTo({ top: 0 });
+  }
   const mappingError = templateIssue(project);
   const spreadStart =
     actualIndex === 0
@@ -150,33 +167,6 @@ function App() {
       setBusy(false);
     }
   }
-  async function loadExamples() {
-    setLoadingExamples(true);
-    try {
-      for (const [target, name] of [
-        ["inside", "izquierda"],
-        ["right", "derecha"],
-      ]) {
-        const response = await fetch(
-          `${import.meta.env.BASE_URL}templates/semana-${name}.png`,
-        );
-        if (!response.ok) {
-          setError("No se pudo cargar la plantilla de ejemplo.");
-          return;
-        }
-        await upload(
-          new File([await response.blob()], `semana-${name}.png`, {
-            type: "image/png",
-          }),
-          target,
-        );
-      }
-      setView("double");
-      go(1);
-    } finally {
-      setLoadingExamples(false);
-    }
-  }
   const editingAsset =
     editing === "override" && page
       ? project.overrides[page.id]
@@ -201,14 +191,22 @@ function App() {
     <div className="asset-upload" key={target}>
       <div className="asset-row">
         <label className="upload">
-          <FileImage size={21} />
+          {project.assets[target] ? (
+            <img
+              className="asset-thumbnail"
+              src={assetThumbnail(project, target)}
+              alt={`Miniatura de ${title.toLowerCase()}`}
+            />
+          ) : (
+            <FileImage size={21} />
+          )}
           <span>
             <strong>{title}</strong>
             <small>{project.assets[target]?.name || "Elegir imagen"}</small>
           </span>
           <input
             aria-label={title}
-            disabled={!!detecting || loadingExamples}
+            disabled={!!detecting}
             type="file"
             accept="image/png,image/jpeg,image/webp"
             onChange={(e) => {
@@ -232,6 +230,15 @@ function App() {
           </button>
         )}
       </div>
+      <button
+        className="secondary create-design"
+        disabled={!!detecting}
+        onClick={() => setDesigning(target)}
+      >
+        {project.assets[target]
+          ? `Editar diseño de ${title.toLowerCase()}`
+          : `Crear ${title.toLowerCase()}`}
+      </button>
       {project.assets[target]?.template && (
         <div className="template-info">
           <span>
@@ -253,29 +260,34 @@ function App() {
         <div className="header-actions">
           <button
             className="secondary"
-            disabled={busy || !!detecting || loadingExamples}
+            disabled={busy || !!detecting}
             onClick={createAnother}
           >
             Crear otra
           </button>
-          <button
-            className="primary export-header"
-            onClick={generate}
-            disabled={busy || !!dateError || !!detecting || !!mappingError}
-          >
-            <Download size={17} />
-            {busy ? `${progress}%` : "Exportar PDF"}
-          </button>
+          {step === 2 && (
+            <button
+              className="primary export-header"
+              onClick={generate}
+              disabled={busy || !!dateError || !!detecting || !!mappingError}
+            >
+              <Download size={17} />
+              {busy ? `${progress}%` : "Exportar PDF"}
+            </button>
+          )}
         </div>
       </header>
       <div className="subheader">
-        <button
-          className="mobile-toggle icon"
-          aria-label="Mostrar configuración"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          <Menu size={20} />
-        </button>
+        {step === 2 && (
+          <button
+            className="mobile-toggle icon"
+            aria-label="Mostrar configuración"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            <Menu size={20} />
+          </button>
+        )}
         <span>{project.title}</span>
       </div>
       {error && (
@@ -296,24 +308,34 @@ function App() {
           {detecting}
         </div>
       )}
-      <div className="workspace">
-        <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
+      <nav className="steps" aria-label="Pasos del asistente">
+        {steps.map((s, i) => (
+          <button
+            key={s}
+            className={step === i ? "active" : ""}
+            aria-current={step === i ? "step" : undefined}
+            disabled={
+              busy ||
+              !!detecting ||
+              i > furthestStep ||
+              (i > step && !!dateError)
+            }
+            onClick={() => navigateStep(i)}
+          >
+            <span>{i + 1}</span>
+            {s}
+          </button>
+        ))}
+      </nav>
+      <div className={`workspace ${step < 2 ? "setup-workspace" : ""}`}>
+        <aside
+          className={mobileOpen ? "sidebar open" : "sidebar"}
+          role={step < 2 ? "main" : undefined}
+        >
           <>
-            <nav className="steps" aria-label="Pasos del asistente">
-              {steps.map((s, i) => (
-                <button
-                  key={s}
-                  className={step === i ? "active" : ""}
-                  onClick={() => setStep(i)}
-                >
-                  <span>{i + 1}</span>
-                  {s}
-                </button>
-              ))}
-            </nav>
             {step === 0 && (
               <section>
-                <h1>Tu agenda, a tu medida</h1>
+                <h1>Configura tu agenda</h1>
                 <p>Elige las fechas y cómo quieres repartir tus días.</p>
                 <label>
                   Nombre de la agenda
@@ -435,25 +457,27 @@ function App() {
                 )}
                 <p className="hint">
                   Semanas de lunes a domingo, cortadas al terminar cada mes. Los
-                  días del mes siguiente completan la semana en un tono muy tenue.
+                  días del mes siguiente completan la semana en un tono muy
+                  tenue.
                 </p>
                 <button
                   className="primary next"
                   disabled={!!dateError}
-                  onClick={() => setStep(1)}
+                  onClick={() => navigateStep(1)}
                 >
-                  Continuar con los diseños
+                  Continuar con las plantillas
                   <ChevronRight size={17} />
                 </button>
               </section>
             )}
             {step === 1 && (
               <section>
-                <h1>Añade tus diseños</h1>
+                <h1>Añade tus plantillas</h1>
                 <p>
-                  Sube una plantilla que ya tenga el diseño y los días.
-                  Detectamos las fechas para sustituirlas en su sitio durante
-                  todo el calendario.
+                  Crea tus propias páginas con texto, figuras e imágenes, o sube
+                  una plantilla que ya tenga el diseño y los días. Detectamos
+                  las fechas para sustituirlas en su sitio durante todo el
+                  calendario.
                 </p>
                 {assetInput("front", "Portada")}
                 {assetInput("back", "Contraportada")}
@@ -469,27 +493,31 @@ function App() {
                   PNG, JPG o WebP · hasta 15 MB. Las plantillas se ajustan al
                   papel completo. Usa imágenes con la proporción del papel.
                 </p>
-                <button
-                  className="secondary"
-                  disabled={!!detecting || loadingExamples}
-                  onClick={() => {
-                    void loadExamples().catch(() => {
-                      setDetecting("");
-                      setError("No se pudieron cargar las plantillas.");
-                    });
-                  }}
-                >
-                  Cargar las dos plantillas de ejemplo
-                </button>
                 <p className="hint">
                   Revisa las posiciones en «Ajustar fechas». Se conserva todo el
                   diseño: líneas, recuadros, Importante y Notas. La detección se
                   hace en este navegador.
                 </p>
-                <button className="primary next" onClick={() => setStep(2)}>
-                  Preparar impresión
-                  <ChevronRight size={17} />
-                </button>
+                <p className="hint">
+                  También puedes continuar sin plantillas y usar el diseño de la
+                  agenda.
+                </p>
+                <div className="step-actions">
+                  <button
+                    className="secondary"
+                    disabled={!!detecting}
+                    onClick={() => navigateStep(0)}
+                  >
+                    <ChevronLeft size={17} /> Atrás
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={!!dateError || !!detecting}
+                    onClick={() => navigateStep(2)}
+                  >
+                    Ver vista previa <ChevronRight size={17} />
+                  </button>
+                </div>
               </section>
             )}
             {step === 2 && (
@@ -546,6 +574,13 @@ function App() {
                   {busy ? `Generando… ${progress}%` : "Descargar PDF"}
                 </button>
                 {busy && <progress value={progress} max="100" />}
+                <button
+                  className="secondary previous-step"
+                  disabled={busy || !!detecting}
+                  onClick={() => navigateStep(1)}
+                >
+                  <ChevronLeft size={17} /> Volver a las plantillas
+                </button>
               </section>
             )}
           </>
@@ -554,165 +589,242 @@ function App() {
             cierras esta página, se pierde el trabajo actual.
           </p>
         </aside>
-        <main className="preview-area">
-          <div className="preview-toolbar">
-            <div>
-              <strong>Vista previa</strong>
-              <span>
-                {project.size} ·{" "}
-                {project.layout === "day"
-                  ? "Día por página"
-                  : project.layout === "week"
-                    ? "Semana por página"
-                    : "Semana en dos caras"}
-              </span>
-            </div>
-            <div className="preview-actions">
-              <div
-                className="view-toggle"
-                role="group"
-                aria-label="Páginas visibles"
-              >
-                <button
-                  aria-pressed={view === "single"}
-                  onClick={() => setView("single")}
-                >
-                  Una página
-                </button>
-                <button
-                  aria-pressed={view === "double"}
-                  onClick={() => setView("double")}
-                >
-                  Dos páginas
-                </button>
+        {step === 2 && (
+          <main className="preview-area">
+            <div className="preview-toolbar">
+              <div>
+                <strong>Vista previa</strong>
+                <span>
+                  {project.size} ·{" "}
+                  {project.layout === "day"
+                    ? "Día por página"
+                    : project.layout === "week"
+                      ? "Semana por página"
+                      : "Semana en dos caras"}
+                </span>
               </div>
-              <select
-                aria-label="Ir a página"
-                value={actualIndex}
-                onChange={(e) => go(+e.target.value)}
-              >
-                {all.map((p, i) => (
-                  <option key={p.id} value={i}>
-                    {i + 1} ·{" "}
-                    {p.kind === "front"
-                      ? "Portada"
-                      : p.kind === "back"
-                        ? "Contraportada"
-                        : p.kind === "monthly"
-                          ? `Vista mensual · ${format(`${p.month}-01`, { month: "long", year: "numeric" })}`
-                          : p.kind === "blank"
-                            ? "En blanco"
-                            : format(p.days.find(Boolean) || `${p.month}-01`, {
-                                day: "numeric",
-                                month: "short",
-                              }) +
-                              (p.side === "right"
-                                ? " · derecha"
-                                : p.side === "left"
-                                  ? " · izquierda"
-                                  : "")}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className={`canvas ${view === "double" ? "double-view" : ""}`}>
-            {page ? (
-              visiblePages.map((visiblePage, offset) => {
-                const pageIndex = viewStart + offset;
-                return (
-                  <div className="page-view" key={visiblePage.id}>
-                    {view === "double" && (
-                      <button
-                        className="page-select"
-                        aria-pressed={actualIndex === pageIndex}
-                        onClick={() => go(pageIndex)}
-                      >
-                        Página {pageIndex + 1}
-                      </button>
-                    )}
-                    <div className="paper">
-                      <img
-                        alt={`Vista previa de la página ${pageIndex + 1}`}
-                        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(project, visiblePage, false))}`}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="empty">
-                Configura un intervalo de fechas válido para ver tu agenda.
-              </p>
-            )}
-          </div>
-          <div className="page-controls">
-            <button
-              className="icon"
-              disabled={viewStart === 0 || !page}
-              onClick={() =>
-                go(
-                  view === "double"
-                    ? Math.max(0, viewStart - 2)
-                    : actualIndex - 1,
-                )
-              }
-              aria-label="Página anterior"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <span>
-              {visiblePages.length === 2
-                ? `Páginas ${viewStart + 1}–${viewEnd + 1}`
-                : `Página ${page ? actualIndex + 1 : 0}`}{" "}
-              de {all.length}
-            </span>
-            <button
-              className="icon"
-              disabled={viewEnd >= all.length - 1}
-              onClick={() => go(viewEnd + 1)}
-              aria-label="Página siguiente"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-          {page && page.kind !== "blank" && page.kind !== "monthly" && (
-            <div className="page-override">
-              <label>
-                <Upload size={15} />
-                Diseño solo para{" "}
-                {view === "double"
-                  ? `la página ${actualIndex + 1}`
-                  : "esta página"}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(e) => {
-                    void upload(e.target.files?.[0], "override");
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              {project.overrides[page.id]?.template && (
-                <button onClick={() => setEditing("override")}>
-                  Ajustar fechas
-                </button>
-              )}
-              {project.overrides[page.id] && (
-                <button
-                  onClick={() => {
-                    const o = { ...project.overrides };
-                    delete o[page.id];
-                    change("overrides", o);
-                  }}
+              <div className="preview-actions">
+                <div
+                  className="view-toggle"
+                  role="group"
+                  aria-label="Páginas visibles"
                 >
-                  Restablecer
-                </button>
+                  <button
+                    aria-pressed={view === "single"}
+                    onClick={() => setView("single")}
+                  >
+                    Una página
+                  </button>
+                  <button
+                    aria-pressed={view === "double"}
+                    onClick={() => setView("double")}
+                  >
+                    Dos páginas
+                  </button>
+                </div>
+                <select
+                  aria-label="Ir a página"
+                  value={actualIndex}
+                  onChange={(e) => go(+e.target.value)}
+                >
+                  {all.map((p, i) => (
+                    <option key={p.id} value={i}>
+                      {i + 1} ·{" "}
+                      {p.kind === "front"
+                        ? "Portada"
+                        : p.kind === "back"
+                          ? "Contraportada"
+                          : p.kind === "monthly"
+                            ? `Vista mensual · ${format(`${p.month}-01`, { month: "long", year: "numeric" })}`
+                            : p.kind === "blank"
+                              ? "En blanco"
+                              : format(
+                                  p.days.find(Boolean) || `${p.month}-01`,
+                                  {
+                                    day: "numeric",
+                                    month: "short",
+                                  },
+                                ) +
+                                (p.side === "right"
+                                  ? " · derecha"
+                                  : p.side === "left"
+                                    ? " · izquierda"
+                                    : "")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className={`canvas ${view === "double" ? "double-view" : ""}`}>
+              {page ? (
+                visiblePages.map((visiblePage, offset) => {
+                  const pageIndex = viewStart + offset;
+                  return (
+                    <div className="page-view" key={visiblePage.id}>
+                      {view === "double" && (
+                        <button
+                          className="page-select"
+                          aria-pressed={actualIndex === pageIndex}
+                          onClick={() => go(pageIndex)}
+                        >
+                          Página {pageIndex + 1}
+                        </button>
+                      )}
+                      <div className="paper">
+                        <img
+                          alt={`Vista previa de la página ${pageIndex + 1}`}
+                          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(project, visiblePage, false))}`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="empty">
+                  Configura un intervalo de fechas válido para ver tu agenda.
+                </p>
               )}
             </div>
-          )}
-        </main>
+            <div className="page-controls">
+              <button
+                className="icon"
+                disabled={viewStart === 0 || !page}
+                onClick={() =>
+                  go(
+                    view === "double"
+                      ? Math.max(0, viewStart - 2)
+                      : actualIndex - 1,
+                  )
+                }
+                aria-label="Página anterior"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <span>
+                {visiblePages.length === 2
+                  ? `Páginas ${viewStart + 1}–${viewEnd + 1}`
+                  : `Página ${page ? actualIndex + 1 : 0}`}{" "}
+                de {all.length}
+              </span>
+              <button
+                className="icon"
+                disabled={viewEnd >= all.length - 1}
+                onClick={() => go(viewEnd + 1)}
+                aria-label="Página siguiente"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+            {page && page.kind !== "blank" && page.kind !== "monthly" && (
+              <div className="page-override">
+                <label>
+                  <Upload size={15} />
+                  Diseño solo para{" "}
+                  {view === "double"
+                    ? `la página ${actualIndex + 1}`
+                    : "esta página"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => {
+                      void upload(e.target.files?.[0], "override");
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <button
+                  disabled={!!detecting || busy}
+                  onClick={() => setDesigning("override")}
+                >
+                  Crear o editar esta página
+                </button>
+                {project.overrides[page.id]?.template && (
+                  <button onClick={() => setEditing("override")}>
+                    Ajustar fechas
+                  </button>
+                )}
+                {project.overrides[page.id] && (
+                  <button
+                    onClick={() => {
+                      const o = { ...project.overrides };
+                      delete o[page.id];
+                      change("overrides", o);
+                    }}
+                  >
+                    Restablecer
+                  </button>
+                )}
+              </div>
+            )}
+          </main>
+        )}
       </div>
+      {designing &&
+        (() => {
+          const target = designing as keyof Project["assets"];
+          const sourcePage =
+            designing === "override"
+              ? page
+              : all.find((p) =>
+                  target === "front" || target === "back"
+                    ? p.kind === target
+                    : p.kind === "inside" &&
+                      (target === "right"
+                        ? p.side === "right"
+                        : p.side !== "right"),
+                );
+          const sourceAsset =
+            designing === "override" && page
+              ? project.overrides[page.id] ||
+                (page.kind === "front" || page.kind === "back"
+                  ? project.assets[page.kind]
+                  : page.side === "right"
+                    ? project.assets.right || project.assets.inside
+                    : project.assets.inside)
+              : project.assets[target];
+          const title =
+            designing === "override"
+              ? `Página ${actualIndex + 1}`
+              : {
+                  front: "Portada",
+                  back: "Contraportada",
+                  inside: "Páginas interiores",
+                  right: "Página derecha",
+                }[target];
+          const interior = sourcePage?.kind === "inside";
+          const calendarTarget: DesignTarget =
+            designing === "override"
+              ? sourcePage?.side === "right"
+                ? "right"
+                : "inside"
+              : target;
+          const calendar = interior
+            ? calendarPlaceholder(project, calendarTarget, sourceAsset)
+            : undefined;
+          return (
+            <PageDesigner
+              title={title}
+              asset={sourceAsset}
+              interior={interior}
+              calendar={calendar}
+              calendarElements={
+                interior && !sourceAsset?.template
+                  ? editableCalendarElements(project, calendarTarget)
+                  : undefined
+              }
+              onClose={() => setDesigning(null)}
+              onSave={(asset) => {
+                if (designing === "override" && page)
+                  change("overrides", {
+                    ...project.overrides,
+                    [page.id]: asset,
+                  });
+                else change("assets", { ...project.assets, [target]: asset });
+                setDesigning(null);
+              }}
+            />
+          );
+        })()}
       {editing && editingAsset && (
         <TemplateEditor
           asset={editingAsset}

@@ -54,6 +54,7 @@ export function renderTemplate(
   page: Page,
   t: Template,
   includeNotes: boolean,
+  placeholders = false,
 ) {
   const rect = (r: Rect, color: string, opacity = 1) =>
     `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${color}" opacity="${opacity}"/>`;
@@ -76,8 +77,15 @@ export function renderTemplate(
     const trailing = !!d && f.kind !== "month" && isTrailing(d);
     if (!d || (f.kind !== "month" && !trailing && (d < p.start || d > p.end)))
       continue;
-    const value =
-      f.kind === "month"
+    const value = placeholders
+      ? f.kind === "month"
+        ? "Mes YYYY"
+        : f.kind === "number"
+          ? "XX"
+          : p.layout === "day"
+            ? "Día"
+            : WEEKDAYS[f.weekday ?? 0]
+      : f.kind === "month"
         ? new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", {
             month: "long",
             timeZone: "UTC",
@@ -91,7 +99,8 @@ export function renderTemplate(
   if (includeNotes)
     for (const [i, day] of t.days.entries()) {
       const d = dateForWeekday(page, day.weekday);
-      if (!d || isTrailing(d) || d < p.start || d > p.end || !p.notes[d]) continue;
+      if (!d || isTrailing(d) || d < p.start || d > p.end || !p.notes[d])
+        continue;
       const a = day.area,
         headerBottom = Math.max(
           a.y,
@@ -187,6 +196,7 @@ export function templateIssue(p: Project): string {
         ];
   for (const group of groups) {
     const t = group.asset?.template;
+    if (group.asset?.design && !t) continue;
     if (!t) return `Sube y ajusta la plantilla ${group.name}.`;
     if (p.layout === "day") {
       if (!t.fields.some((f) => f.kind === "number") || !t.days.length)

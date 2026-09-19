@@ -1,13 +1,20 @@
+import { renderDesign, type Design } from "./design";
 import {
   templateFor,
   dateForWeekday,
   displayDays,
   renderTemplate,
   validTemplate,
+  WEEKDAYS,
   type Template,
 } from "./template";
 export type Layout = "day" | "week" | "spread";
-export type Asset = { name: string; data: string; template?: Template };
+export type Asset = {
+  name: string;
+  data: string;
+  template?: Template;
+  design?: Design;
+};
 export type Project = {
   version: 1;
   title: string;
@@ -306,7 +313,12 @@ export function monthlySvg(p: Project, month: string): string {
     body += text(x, 705, "Los días fuera del intervalo aparecen en gris.", 12);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</g></svg>`;
 }
-export function svg(p: Project, page: Page, includeNotes = true): string {
+export function svg(
+  p: Project,
+  page: Page,
+  includeNotes = true,
+  placeholders = false,
+): string {
   if (page.kind === "monthly") return monthlySvg(p, page.month!);
   const asset = assetFor(p, page);
   const text = (
@@ -319,7 +331,12 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
   ) =>
     `<text x="${x}" y="${y}" font-family="sans-serif" font-size="${size}" font-weight="${weight}" fill="${color}">${esc(value)}</text>`;
   let body = '<rect width="740" height="1050" fill="white"/>';
-  if (asset)
+  if (asset?.design)
+    body += renderDesign(
+      asset.design,
+      placeholders ? undefined : { project: p, page },
+    );
+  else if (asset)
     body += `<image href="${esc(asset.data)}" width="740" height="1050" preserveAspectRatio="${asset.template ? "none" : "xMidYMid slice"}"/>`;
   if (page.kind === "blank")
     return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</svg>`;
@@ -341,15 +358,24 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
     } else body += text(80, 920, p.title.slice(0, 55), 20, p.color);
   }
   const template = templateFor(p, page);
-  if (template) body += renderTemplate(p, page, template, includeNotes);
-  if (page.kind === "inside" && p.overlay && !template) {
+  if (template)
+    body += renderTemplate(p, page, template, includeNotes, placeholders);
+  if (
+    page.kind === "inside" &&
+    p.overlay &&
+    !template &&
+    asset?.design?.showCalendar !== false &&
+    !asset?.design?.editableCalendar
+  ) {
     body += text(
       (p.margin / 100) * 740,
       Math.max(27, (p.top / 100) * 1050 - 24),
-      format(page.month ? `${page.month}-01` : page.days[0], {
-        month: "long",
-        year: "numeric",
-      }),
+      placeholders
+        ? "Mes YYYY"
+        : format(page.month ? `${page.month}-01` : page.days[0], {
+            month: "long",
+            year: "numeric",
+          }),
       21,
       p.color,
       600,
@@ -363,12 +389,20 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
       body += text(
         box.x,
         box.y + 27,
-        format(box.day, { weekday: "long", day: "numeric", month: "short" }),
+        placeholders
+          ? `${p.layout === "day" ? "Día" : WEEKDAYS[(date(box.day).getUTCDay() + 6) % 7]} XX`
+          : format(box.day, {
+              weekday: "long",
+              day: "numeric",
+              month: "short",
+            }),
         17,
         active || trailing ? p.color : "#777777",
         600,
       );
-      const maxLines = Math.max(0, Math.floor((box.height - 50) / 20));
+      const maxLines = asset?.design
+        ? 0
+        : Math.max(0, Math.floor((box.height - 50) / 20));
       const lines =
         includeNotes && active
           ? wrap(p.notes[box.day] || "", Math.floor(box.width / 8))
