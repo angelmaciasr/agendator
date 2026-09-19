@@ -1,3 +1,4 @@
+import { translator } from "./i18n";
 import { pages, svg, type Project } from "./planner";
 export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -12,6 +13,7 @@ export async function exportPDF(
   includeNotes: boolean,
   progress: (n: number) => void,
 ) {
+  const t = translator(p.language);
   const { PDFDocument } = await import("pdf-lib");
   const doc = await PDFDocument.create();
   doc.setTitle(p.title);
@@ -29,7 +31,7 @@ export async function exportPDF(
       canvas.width = p.size === "A4" ? 2480 : 1748;
       canvas.height = p.size === "A4" ? 3508 : 2480;
       const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("No se pudo preparar la página.");
+      if (!ctx) throw new Error(t("export.pageError"));
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const jpg = await doc.embedJpg(canvas.toDataURL("image/jpeg", 0.92));
       const dimensions: [number, number] =

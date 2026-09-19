@@ -11,7 +11,15 @@ npm ci
 npm run dev
 ```
 
-Abre la dirección que muestra Vite (normalmente http://localhost:5173). La instalación prepara automáticamente el motor de reconocimiento y el idioma español para servirlos desde la propia aplicación.
+Abre la dirección que muestra Vite (normalmente http://localhost:5173). La instalación prepara automáticamente el motor de reconocimiento y los idiomas español e inglés para servirlos desde la propia aplicación.
+
+## Idioma
+
+El selector de la cabecera permite elegir español o inglés. Cambia la interfaz, los mensajes, los marcadores del editor y las fechas automáticas de las plantillas, miniaturas, vista previa y PDF. Conserva los textos escritos por el usuario y los elementos del diseño. El idioma se recuerda en este navegador; el proyecto sigue siendo temporal.
+
+Los textos se definen mediante las mismas claves en `src/locales/es.js` y `src/locales/en.js`. `src/i18n.ts` resuelve las claves y parámetros, por ejemplo `t("preview.pageCount", { page: 2, total: 10 })`. Para añadir un texto, crea la clave en ambos archivos. Las pruebas comprueban que las claves y los parámetros coincidan. Las fechas se formatean con el idioma del proyecto.
+
+El OCR carga los modelos español e inglés desde `public/ocr`, preparados por `scripts/prepare-ocr.mjs`, y puede reconocer plantillas de cualquiera de los dos idiomas aunque la interfaz esté en el otro. El texto que forma parte de la imagen original se conserva; los campos de fecha detectados se sustituyen en el idioma elegido.
 
 ## Crear una agenda con tus plantillas
 
@@ -30,7 +38,7 @@ Las semanas se cortan al cambiar de mes. Al terminar el mes, los días del sigui
 
 La imagen de plantilla se conserva como fondo. Se cubren únicamente los campos de texto identificados con su color de fondo y se dibujan los datos del calendario encima, sin añadir otro calendario ni nuevas líneas sobre la plantilla. Las zonas del mes anterior o fuera del intervalo se cubren de blanco; los días del mes siguiente que completan la semana se muestran al 20% de intensidad. Los bloques originales de «Importante» y «Notas» siguen formando parte del diseño.
 
-El reconocimiento utiliza [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/docs/api.md) en el navegador y está pensado para nombres de días y meses en español. No garantiza reconocer todos los diseños: conviene revisar las zonas, especialmente si hay columnas, fondos decorados, texto poco legible o tipografías inusuales. Puedes definir manualmente todos los campos y zonas. La sustitución usa una tipografía serif o sans serif ajustable; no extrae la fuente de una imagen. Los colores de fondo planos pueden ajustarse; no se reconstruyen texturas detrás de los textos.
+El reconocimiento utiliza [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/docs/api.md) en el navegador y reconoce nombres de días y meses en español e inglés, además de números de día y años. No garantiza reconocer todos los diseños: conviene revisar las zonas, especialmente si hay columnas, fondos decorados, texto poco legible o tipografías inusuales. Puedes definir manualmente todos los campos y zonas. La sustitución usa una tipografía serif o sans serif ajustable; no extrae la fuente de una imagen. Los colores de fondo planos pueden ajustarse; no se reconstruyen texturas detrás de los textos.
 
 Sin plantilla se puede previsualizar y exportar el diseño básico. El botón **Crear otra** vacía las plantillas y los ajustes para empezar un calendario nuevo.
 

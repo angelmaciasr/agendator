@@ -1,7 +1,8 @@
+import { translator, weekdays, locale } from "./i18n";
 import type { Project, Page } from "./planner";
 export type Rect = { x: number; y: number; width: number; height: number };
 export type TemplateField = Rect & {
-  kind: "month" | "number" | "weekday";
+  kind: "month" | "year" | "number" | "weekday";
   weekday?: number;
   fontSize: number;
   color: string;
@@ -11,15 +12,6 @@ export type TemplateField = Rect & {
 };
 export type TemplateDay = { weekday: number; area: Rect };
 export type Template = { fields: TemplateField[]; days: TemplateDay[] };
-export const WEEKDAYS = [
-  "Lunes",
-  "Martes",
-  "Miércoles",
-  "Jueves",
-  "Viernes",
-  "Sábado",
-  "Domingo",
-];
 export const templateFor = (p: Project, page: Page) => {
   const asset =
     p.overrides[page.id] ||
@@ -56,6 +48,8 @@ export function renderTemplate(
   includeNotes: boolean,
   placeholders = false,
 ) {
+  const tr = translator(p.language);
+  const WEEKDAYS = weekdays(p.language ?? "es");
   const rect = (r: Rect, color: string, opacity = 1) =>
     `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${color}" opacity="${opacity}"/>`;
   const isTrailing = (d: string) => !!page.month && !d.startsWith(page.month);
@@ -68,31 +62,42 @@ export function renderTemplate(
     else if (!d || d < p.start || d > p.end) out += rect(day.area, "#ffffff");
   }
   for (const [i, f] of t.fields.entries()) {
-    const d =
-      f.kind === "month"
-        ? page.month
-          ? `${page.month}-01`
-          : page.days.find(Boolean)
-        : dateForWeekday(page, f.weekday ?? 0);
-    const trailing = !!d && f.kind !== "month" && isTrailing(d);
-    if (!d || (f.kind !== "month" && !trailing && (d < p.start || d > p.end)))
-      continue;
-    const value = placeholders
-      ? f.kind === "month"
-        ? "Mes YYYY"
-        : f.kind === "number"
-          ? "XX"
-          : p.layout === "day"
-            ? "Día"
-            : WEEKDAYS[f.weekday ?? 0]
-      : f.kind === "month"
-        ? new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", {
-            month: "long",
-            timeZone: "UTC",
-          })
-        : f.kind === "number"
-          ? String(Number(d.slice(-2)))
-          : WEEKDAYS[(new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7];
+    const header = f.kind === "month" || f.kind === "year";
+    const d = header
+      ? page.month
+        ? `${page.month}-01`
+        : page.days.find(Boolean)
+      : dateForWeekday(page, f.weekday ?? 0);
+    const trailing = !!d && !header && isTrailing(d);
+    if (!d || (!header && !trailing && (d < p.start || d > p.end))) continue;
+    const value =
+      f.kind === "year"
+        ? placeholders
+          ? tr("calendar.yearPlaceholder")
+          : d.slice(0, 4)
+        : placeholders
+          ? f.kind === "month"
+            ? tr(
+                t.fields.some((field) => field.kind === "year")
+                  ? "calendar.month"
+                  : "calendar.monthYear",
+              )
+            : f.kind === "number"
+              ? tr("calendar.numberPlaceholder")
+              : p.layout === "day"
+                ? tr("calendar.day")
+                : WEEKDAYS[f.weekday ?? 0]
+          : f.kind === "month"
+            ? new Date(`${d}T12:00:00Z`).toLocaleDateString(
+                locale(p.language ?? "es"),
+                {
+                  month: "long",
+                  timeZone: "UTC",
+                },
+              )
+            : f.kind === "number"
+              ? String(Number(d.slice(-2)))
+              : WEEKDAYS[(new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7];
     const x = f.align === "center" ? f.x + f.width / 2 : f.x + 2;
     out += `<clipPath id="field-${i}">${rect(f, "white")}</clipPath><text clip-path="url(#field-${i})" x="${x}" y="${f.y + f.height / 2}" dominant-baseline="central" text-anchor="${f.align === "center" ? "middle" : "start"}" font-family="${f.font}" font-size="${f.fontSize}" fill="${f.color}" opacity="${trailing ? 0.2 : 1}">${escapeXml(value)}</text>`;
   }
@@ -156,8 +161,8 @@ export function validTemplate(t: Template) {
     t.fields.every(
       (f) =>
         rect(f) &&
-        ["month", "number", "weekday"].includes(f.kind) &&
-        (f.kind === "month" || weekday(f.weekday)) &&
+        ["month", "year", "number", "weekday"].includes(f.kind) &&
+        (["month", "year"].includes(f.kind) || weekday(f.weekday)) &&
         ["serif", "sans-serif"].includes(f.font) &&
         ["left", "center"].includes(f.align) &&
         /^#[\da-f]{6}$/i.test(f.color) &&
@@ -171,6 +176,8 @@ export function validTemplate(t: Template) {
 }
 
 export function templateIssue(p: Project): string {
+  const tr = translator(p.language);
+  const WEEKDAYS = weekdays(p.language ?? "es");
   if (!p.assets.inside?.template && !p.assets.right?.template) return "";
   const split = p.spreadSplit ?? 3;
   const groups =
@@ -179,28 +186,28 @@ export function templateIssue(p: Project): string {
           {
             asset: p.assets.inside,
             days: Array.from({ length: split }, (_, i) => i),
-            name: "izquierda",
+            name: tr("template.left"),
           },
           {
             asset: p.assets.right,
             days: Array.from({ length: 7 - split }, (_, i) => i + split),
-            name: "derecha",
+            name: tr("template.right"),
           },
         ]
       : [
           {
             asset: p.assets.inside,
             days: p.layout === "week" ? [0, 1, 2, 3, 4, 5, 6] : [],
-            name: "interior",
+            name: tr("template.inside"),
           },
         ];
   for (const group of groups) {
     const t = group.asset?.template;
     if (group.asset?.design && !t) continue;
-    if (!t) return `Sube y ajusta la plantilla ${group.name}.`;
+    if (!t) return tr("template.missing", { name: group.name });
     if (p.layout === "day") {
       if (!t.fields.some((f) => f.kind === "number") || !t.days.length)
-        return "Marca el número y la zona del día en la plantilla interior.";
+        return tr("template.markDay");
       continue;
     }
     for (const d of group.days)
@@ -209,7 +216,10 @@ export function templateIssue(p: Project): string {
         !t.fields.some((f) => f.kind === "number" && f.weekday === d) ||
         !t.fields.some((f) => f.kind === "weekday" && f.weekday === d)
       )
-        return `Falta ajustar ${WEEKDAYS[d]} en la plantilla ${group.name}. Revisa el reparto de la semana o marca sus campos.`;
+        return tr("template.missingDay", {
+          day: WEEKDAYS[d],
+          name: group.name,
+        });
   }
   return "";
 }

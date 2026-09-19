@@ -1,9 +1,12 @@
 import {
-  WEEKDAYS,
-  type Template,
-  type TemplateField,
-  type Rect,
-} from "./template";
+  weekdays,
+  months,
+  translate,
+  translator,
+  getLanguage,
+  type Language,
+} from "./i18n";
+import { type Template, type TemplateField, type Rect } from "./template";
 const normalize = (s: string) =>
   s
     .toLowerCase()
@@ -24,10 +27,38 @@ function distance(a: string, b: string) {
   }
   return prev[b.length];
 }
+// Recognize either template language, independently of the UI language.
+export function recognizeWeekday(value: string) {
+  const normalized = normalize(value);
+  if (normalized.length < 3) return -1;
+  const variants = [weekdays("es"), weekdays("en")];
+  for (const names of variants) {
+    const exact = names.findIndex((name) => normalize(name) === normalized);
+    if (exact >= 0) return exact;
+  }
+  for (const names of variants) {
+    const match = names.findIndex(
+      (name) => distance(normalize(name), normalized) <= 1,
+    );
+    if (match >= 0) return match;
+  }
+  return -1;
+}
+export function recognizeMonth(value: string) {
+  const normalized = normalize(value);
+  return [
+    ...months("es"),
+    ...months("en"),
+    translate("calendar.month", {}, "es"),
+    translate("calendar.month", {}, "en"),
+  ].some((name) => normalize(name) === normalized);
+}
 export async function detectTemplate(
   data: string,
   progress: (text: string) => void,
+  language: Language = getLanguage(),
 ): Promise<Template> {
+  const tr = translator(language);
   const img = new Image();
   img.src = data;
   await img.decode();
@@ -67,16 +98,22 @@ export async function detectTemplate(
   const { createWorker, PSM } = await import("tesseract.js");
   const root = new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href)
     .href;
-  const worker = await createWorker("spa", 1, {
-    workerPath: root + "worker.min.js",
-    cacheMethod: "none",
-    langPath: root.replace(/\/$/, ""),
-    corePath: root,
-    logger: (m) => {
-      if (m.status === "recognizing text")
-        progress(`Leyendo fechas… ${Math.round(m.progress * 100)}%`);
+  const worker = await createWorker(
+    language === "en" ? ["eng", "spa"] : ["spa", "eng"],
+    1,
+    {
+      workerPath: root + "worker.min.js",
+      cacheMethod: "none",
+      langPath: root.replace(/\/$/, ""),
+      corePath: root,
+      logger: (m) => {
+        if (m.status === "recognizing text")
+          progress(
+            tr("ocr.progress", { percent: Math.round(m.progress * 100) }),
+          );
+      },
     },
-  });
+  );
   try {
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
     const { data: ocr } = await worker.recognize(canvas, {}, { blocks: true });
@@ -86,10 +123,7 @@ export async function detectTemplate(
       ) || [];
     const detected = words
       .map((word) => {
-        const n = normalize(word.text);
-        const weekday = WEEKDAYS.findIndex(
-          (d) => distance(normalize(d), n) <= 1,
-        );
+        const weekday = recognizeWeekday(word.text);
         return { word, weekday };
       })
       .filter((x) => x.weekday >= 0)
@@ -134,13 +168,17 @@ export async function detectTemplate(
       const number = words
         .filter(
           (v) =>
-            /^\d{1,2}$/.test(v.text) &&
+            /^(?:\d{1,2}|XX)$/i.test(v.text) &&
             Math.abs((v.bbox.y0 + v.bbox.y1 - b.y0 - b.y1) / 2) <
               (b.y1 - b.y0) * 1.5 &&
-            v.bbox.x1 < b.x0 &&
-            b.x0 - v.bbox.x1 < w * 0.1,
+            ((v.bbox.x1 < b.x0 && b.x0 - v.bbox.x1 < w * 0.1) ||
+              (v.bbox.x0 > b.x1 && v.bbox.x0 - b.x1 < w * 0.1)),
         )
-        .sort((a, c) => c.bbox.x1 - a.bbox.x1)[0];
+        .sort(
+          (a, c) =>
+            Math.min(Math.abs(b.x0 - a.bbox.x1), Math.abs(a.bbox.x0 - b.x1)) -
+            Math.min(Math.abs(b.x0 - c.bbox.x1), Math.abs(c.bbox.x0 - b.x1)),
+        )[0];
       if (number) t.fields.push(field(number.bbox, "number", weekday));
       else {
         const f = field(
@@ -163,22 +201,12 @@ export async function detectTemplate(
       };
       t.days.push({ weekday, area });
     }
-    const months = [
-      "enero",
-      "febrero",
-      "marzo",
-      "abril",
-      "mayo",
-      "junio",
-      "julio",
-      "agosto",
-      "septiembre",
-      "octubre",
-      "noviembre",
-      "diciembre",
-    ];
-    const month = words.find((v) => months.includes(normalize(v.text)));
+    const month = words.find((v) => recognizeMonth(v.text));
     if (month) t.fields.push(field(month.bbox, "month"));
+    const year = words.find((v) =>
+      /^(?:19\d{2}|20\d{2}|21\d{2}|YYYY)$/i.test(v.text),
+    );
+    if (year) t.fields.push(field(year.bbox, "year"));
     // Glyph height varies (e.g. Jueves has descenders); one size per role keeps the template consistent.
     for (const kind of ["number", "weekday"] as const) {
       const group = t.fields.filter((f) => f.kind === kind);

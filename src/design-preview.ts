@@ -1,6 +1,6 @@
+import { translator, weekdays as weekdayNames } from "./i18n";
 import type { DesignElement } from "./design";
 import { dayBoxes } from "./planner";
-import { WEEKDAYS } from "./template";
 import { addDays, svg, type Project, type Page, type Asset } from "./planner";
 import { renderTemplate } from "./template";
 export type DesignTarget = "front" | "back" | "inside" | "right";
@@ -69,6 +69,8 @@ export function editableCalendarElements(
   project: Project,
   target: DesignTarget,
 ): DesignElement[] {
+  const t = translator(project.language);
+  const WEEKDAYS = weekdayNames(project.language ?? "es");
   const context = placeholderContext(project, target);
   const p = { ...context.project, assets: {} };
   const elements: DesignElement[] = [];
@@ -99,16 +101,38 @@ export function editableCalendarElements(
       font: "sans-serif",
       rotation: 0,
       src: "",
-      calendar: { kind, weekday },
+      calendar: { kind, weekday, daily: p.layout === "day" },
     });
   };
   const x = p.margin * 7.4;
   const y = Math.max(27, p.top * 10.5 - 24) - 21;
-  add("month", "Mes", "month", x, y, 160, 30, "Mes", 21, p.color);
-  add("year", "Año", "year", x + 170, y, 100, 30, "YYYY", 21, p.color);
+  add(
+    "month",
+    t("calendar.month"),
+    "month",
+    x,
+    y,
+    160,
+    30,
+    t("calendar.month"),
+    21,
+    p.color,
+  );
+  add(
+    "year",
+    t("calendar.year"),
+    "year",
+    x + 170,
+    y,
+    100,
+    30,
+    t("calendar.yearPlaceholder"),
+    21,
+    p.color,
+  );
   dayBoxes(p, context.page).forEach((box, index) => {
     const weekday = (new Date(`${box.day}T12:00:00Z`).getUTCDay() + 6) % 7;
-    const name = p.layout === "day" ? "Día" : WEEKDAYS[weekday];
+    const name = p.layout === "day" ? t("calendar.day") : WEEKDAYS[weekday];
     add(
       `${index}-weekday`,
       name,
@@ -124,20 +148,20 @@ export function editableCalendarElements(
     );
     add(
       `${index}-number`,
-      `Número · ${name}`,
+      t("calendar.numberLabel", { day: name }),
       "number",
       box.x + 120,
       box.y + 8,
       45,
       25,
-      "XX",
+      t("calendar.numberPlaceholder"),
       17,
       p.color,
       weekday,
     );
     add(
       `${index}-divider`,
-      `Separador · ${name}`,
+      t("calendar.dividerLabel", { day: name }),
       "line",
       box.x,
       box.y,

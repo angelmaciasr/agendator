@@ -1,5 +1,14 @@
+import {
+  t,
+  translator,
+  translate,
+  weekdays,
+  locale,
+  getLanguage,
+  type Language,
+} from "./i18n";
 import type { Project, Page } from "./planner";
-import { dateForWeekday, WEEKDAYS } from "./template";
+import { dateForWeekday } from "./template";
 import { escapeXml } from "./template";
 export type DesignElement = {
   id: string;
@@ -21,6 +30,7 @@ export type DesignElement = {
   calendar?: {
     kind: "month" | "year" | "weekday" | "number" | "line";
     weekday?: number;
+    daily?: boolean;
   };
 };
 export type Design = {
@@ -32,13 +42,17 @@ export type Design = {
 export function renderDesign(
   d: Design,
   context?: { project: Project; page: Page },
+  language: Language = context?.project.language ?? getLanguage(),
 ) {
+  const WEEKDAYS = weekdays(language);
   return (
     `<rect width="740" height="1050" fill="${escapeXml(d.background)}"/>` +
     d.elements
       .filter((e) => !e.calendar || d.showCalendar)
       .map((original) => {
-        let e = original;
+        let e = original.calendar
+          ? { ...original, text: calendarElementText(original, language) }
+          : original;
         let opacity = 1;
         if (e.calendar && context) {
           const { project: p, page } = context;
@@ -57,7 +71,7 @@ export function renderDesign(
           const date = new Date(`${day}T12:00:00Z`);
           const value =
             kind === "month"
-              ? date.toLocaleDateString("es-ES", {
+              ? date.toLocaleDateString(locale(language), {
                   month: "long",
                   timeZone: "UTC",
                 })
@@ -117,7 +131,61 @@ export async function designPng(d: Design) {
   canvas.width = 1480;
   canvas.height = 2100;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("No se pudo guardar el diseño.");
+  if (!ctx) throw new Error(t("editor.saveError"));
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/png");
+}
+
+export function calendarElementText(
+  e: DesignElement,
+  language: Language = getLanguage(),
+) {
+  if (!e.calendar) return e.text;
+  const tr = translator(language);
+  switch (e.calendar.kind) {
+    case "month":
+      return tr("calendar.month");
+    case "year":
+      return tr("calendar.yearPlaceholder");
+    case "number":
+      return tr("calendar.numberPlaceholder");
+    case "weekday":
+      return e.calendar.daily
+        ? tr("calendar.day")
+        : weekdays(language)[e.calendar.weekday ?? 0];
+    default:
+      return e.text;
+  }
+}
+export function designElementLabel(
+  e: DesignElement,
+  language: Language = getLanguage(),
+) {
+  if (e.calendar) {
+    const tr = translator(language);
+    const day = e.calendar.daily
+      ? tr("calendar.day")
+      : weekdays(language)[e.calendar.weekday ?? 0];
+    switch (e.calendar.kind) {
+      case "month":
+        return tr("calendar.month");
+      case "year":
+        return tr("calendar.year");
+      case "weekday":
+        return day;
+      case "number":
+        return tr("calendar.numberLabel", { day });
+      case "line":
+        return tr("calendar.dividerLabel", { day });
+    }
+  }
+  const keys = {
+    text: "element.text",
+    rect: "element.rect",
+    ellipse: "element.ellipse",
+    line: "element.line",
+    image: "element.image",
+    writing: "element.writing",
+  } as const;
+  return e.label || translate(keys[e.kind], {}, language);
 }

@@ -1,7 +1,10 @@
+import { t } from "./i18n";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Asset } from "./planner";
 import {
   designPng,
+  calendarElementText,
+  designElementLabel,
   designSvg,
   type Design,
   type DesignElement,
@@ -13,14 +16,7 @@ import {
   resizeElement,
   type ResizeHandle,
 } from "./design-geometry";
-const names = {
-  text: "Texto",
-  rect: "Rectángulo",
-  ellipse: "Círculo",
-  line: "Línea",
-  image: "Imagen",
-  writing: "Área para escribir",
-};
+
 const element = (kind: DesignElement["kind"]): DesignElement => ({
   id: crypto.randomUUID(),
   kind,
@@ -35,7 +31,7 @@ const element = (kind: DesignElement["kind"]): DesignElement => ({
     : {}),
   fontSize: 36,
   font: "sans-serif",
-  text: "Tu texto",
+  text: t("element.defaultText"),
   src: "",
 });
 // Keep image sources stable while dragging: only the element transform changes.
@@ -56,7 +52,7 @@ const ElementArtwork = memo(function ElementArtwork({
     writingStyle,
     spacing,
     strokeWidth,
-  } = e;
+  } = { ...e, text: calendarElementText(e) };
   const artwork = useMemo(() => {
     const local = {
       id: "art",
@@ -123,6 +119,14 @@ export default function PageDesigner({
   onSave: (asset: Asset) => void;
   onClose: () => void;
 }) {
+  const names = {
+    text: t("element.text"),
+    rect: t("element.rect"),
+    ellipse: t("element.ellipse"),
+    line: t("element.line"),
+    image: t("element.image"),
+    writing: t("element.writing"),
+  };
   const initial: Design = asset?.design || {
     background: "#ffffff",
     showCalendar: interior && !asset?.template,
@@ -245,7 +249,7 @@ export default function PageDesigner({
           !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
           file.size > 15 * 1024 * 1024
         )
-          throw new Error("Usa imágenes PNG, JPG o WebP de hasta 15 MB.");
+          throw new Error(t("upload.requirements"));
         const src = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result));
@@ -266,7 +270,7 @@ export default function PageDesigner({
       commit({ ...design, elements: [...design.elements, ...added] });
       select(added.at(-1)!.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo abrir la imagen.");
+      setError(e instanceof Error ? e.message : t("upload.failed"));
     } finally {
       setBusy(false);
     }
@@ -286,7 +290,7 @@ export default function PageDesigner({
         className="designer"
         role="dialog"
         aria-modal="true"
-        aria-label={`Crear diseño: ${title}`}
+        aria-label={t("editor.dialog", { title })}
         onPaste={(e) => {
           const files = Array.from(e.clipboardData.files);
           if (files.length && !busy) {
@@ -344,7 +348,7 @@ export default function PageDesigner({
         }}
       >
         <header className="designer-header">
-          <strong>{title} · Crear diseño</strong>
+          <strong>{t("editor.title", { title })}</strong>
           <div>
             <button
               autoFocus
@@ -352,7 +356,7 @@ export default function PageDesigner({
               disabled={busy}
               onClick={onClose}
             >
-              Cancelar
+              {t("action.cancel")}
             </button>
             <button
               className="primary"
@@ -363,18 +367,18 @@ export default function PageDesigner({
                 try {
                   const data = await designPng(design);
                   onSave({
-                    name: `${title} · diseño propio`,
+                    name: t("asset.customName", { title }),
                     data,
                     design,
                     template: asset?.template,
                   });
                 } catch {
-                  setError("No se pudo guardar el diseño. Inténtalo de nuevo.");
+                  setError(t("editor.saveFailed"));
                   setBusy(false);
                 }
               }}
             >
-              {busy ? "Procesando…" : "Guardar diseño"}
+              {busy ? t("editor.processing") : t("editor.save")}
             </button>
           </div>
         </header>
@@ -386,7 +390,7 @@ export default function PageDesigner({
         <fieldset
           className="designer-tools"
           disabled={busy}
-          aria-label="Herramientas de diseño"
+          aria-label={t("editor.tools")}
         >
           {(["text", "rect", "ellipse", "line", "writing"] as const).map(
             (kind) => (
@@ -400,9 +404,9 @@ export default function PageDesigner({
             ),
           )}
           <label className="secondary designer-upload">
-            Añadir imagen
+            {t("editor.addImage")}
             <input
-              aria-label="Añadir imagen al diseño"
+              aria-label={t("editor.uploadLabel")}
               type="file"
               accept="image/png,image/jpeg,image/webp"
               multiple
@@ -416,28 +420,28 @@ export default function PageDesigner({
             disabled={cursor === 0 || busy}
             onClick={() => setCursor(cursor - 1)}
           >
-            Deshacer
+            {t("action.undo")}
           </button>
           <button
             disabled={cursor === history.length - 1 || busy}
             onClick={() => setCursor(cursor + 1)}
           >
-            Rehacer
+            {t("action.redo")}
           </button>
         </fieldset>
-        <div className="designer-view-tools" aria-label="Vista del editor">
+        <div className="designer-view-tools" aria-label={t("editor.view")}>
           <div className="designer-zoom">
             <button
-              aria-label="Alejar"
+              aria-label={t("zoom.out")}
               disabled={scale <= 0.25}
               onClick={() => setZoom(Math.max(0.25, scale - 0.1))}
             >
               −
             </button>
             <label>
-              Zoom{" "}
+              {t("zoom.label")}{" "}
               <select
-                aria-label="Zoom del lienzo"
+                aria-label={t("zoom.canvas")}
                 value={zoom === "fit" ? "fit" : String(zoom)}
                 onChange={(e) =>
                   setZoom(
@@ -446,7 +450,7 @@ export default function PageDesigner({
                 }
               >
                 <option value="fit">
-                  Ajustar ({Math.round(fitScale * 100)}%)
+                  {t("zoom.fit", { percent: Math.round(fitScale * 100) })}
                 </option>
                 {![0.25, 0.5, 0.75, 1, 1.5, 2].includes(scale) &&
                   zoom !== "fit" && (
@@ -460,7 +464,7 @@ export default function PageDesigner({
               </select>
             </label>
             <button
-              aria-label="Acercar"
+              aria-label={t("zoom.in")}
               disabled={scale >= 2}
               onClick={() => setZoom(Math.min(2, scale + 0.1))}
             >
@@ -476,9 +480,9 @@ export default function PageDesigner({
                 setGuides({});
               }}
             />
-            Guías y ajuste automático
+            {t("editor.guides")}
           </label>
-          <span>Medidas en px del diseño · Alt para mover libremente</span>
+          <span>{t("editor.measurements")}</span>
         </div>
         <div className="designer-body">
           <div
@@ -497,7 +501,7 @@ export default function PageDesigner({
               <div
                 ref={board}
                 className="designer-paper"
-                aria-label="Lienzo de diseño"
+                aria-label={t("editor.canvas")}
                 style={{
                   width: 740 * scale,
                   height: 1050 * scale,
@@ -606,11 +610,11 @@ export default function PageDesigner({
                                 data-resize={handle}
                                 title={
                                   {
-                                    n: "Estirar desde arriba",
-                                    s: "Estirar desde abajo",
-                                    e: "Estirar desde la derecha",
-                                    w: "Estirar desde la izquierda",
-                                    se: "Estirar desde la esquina",
+                                    n: t("resize.top"),
+                                    s: t("resize.bottom"),
+                                    e: t("resize.right"),
+                                    w: t("resize.left"),
+                                    se: t("resize.corner"),
                                   }[handle]
                                 }
                               />
@@ -628,14 +632,14 @@ export default function PageDesigner({
                       className="designer-calendar"
                       draggable={false}
                       src={calendar}
-                      alt="Calendario de referencia con XX y YYYY"
+                      alt={t("editor.reference")}
                     />
                   )}
                 {showGuides && activeBounds && (
                   <svg
                     className="designer-guides"
                     viewBox="0 0 740 1050"
-                    aria-label="Distancias a los bordes"
+                    aria-label={t("editor.distances")}
                   >
                     {(guides.x !== undefined || centeredX) && (
                       <line
@@ -668,7 +672,7 @@ export default function PageDesigner({
                           x2: b.x,
                           y2: cy,
                           value: b.x,
-                          label: "Izquierda",
+                          label: t("edge.left"),
                           equal: centeredX,
                         },
                         {
@@ -677,7 +681,7 @@ export default function PageDesigner({
                           x2: 740,
                           y2: cy,
                           value: 740 - b.x - b.width,
-                          label: "Derecha",
+                          label: t("edge.right"),
                           equal: centeredX,
                         },
                         {
@@ -686,7 +690,7 @@ export default function PageDesigner({
                           x2: cx,
                           y2: b.y,
                           value: b.y,
-                          label: "Arriba",
+                          label: t("edge.top"),
                           equal: centeredY,
                         },
                         {
@@ -695,7 +699,7 @@ export default function PageDesigner({
                           x2: cx,
                           y2: 1050,
                           value: 1050 - b.y - b.height,
-                          label: "Abajo",
+                          label: t("edge.bottom"),
                           equal: centeredY,
                         },
                       ].map((g) => (
@@ -720,7 +724,10 @@ export default function PageDesigner({
                             )}
                             textAnchor="middle"
                             style={{ fontSize: 11 / scale }}
-                            aria-label={`${g.label}: ${Math.round(g.value)} px`}
+                            aria-label={t("editor.distance", {
+                              edge: g.label,
+                              value: Math.round(g.value),
+                            })}
                           >
                             {Math.round(g.value)} px
                           </text>
@@ -731,15 +738,11 @@ export default function PageDesigner({
                 )}
               </div>
             </div>
-            <p className="designer-tip">
-              Arrastra para mover. Usa los lados o la esquina para cambiar el
-              tamaño. Pega imágenes con ⌘V / Ctrl+V o arrástralas aquí. Al
-              ampliar, desplázate por el lienzo para ver el resto de la página.
-            </p>
+            <p className="designer-tip">{t("editor.tip")}</p>
           </div>
           <fieldset className="designer-properties" disabled={busy}>
             <label>
-              Fondo de página
+              {t("editor.background")}
               <input
                 type="color"
                 value={design.background}
@@ -757,35 +760,29 @@ export default function PageDesigner({
                     commit({ ...design, showCalendar: e.target.checked })
                   }
                 />
-                Mantener calendario automático
+                {t("editor.calendar")}
               </label>
             )}
             {asset?.template && (
-              <p className="hint">
-                Se conservan los campos de fecha. Puedes recolocarlos en
-                «Ajustar fechas» al guardar.
-              </p>
+              <p className="hint">{t("editor.templateHint")}</p>
             )}
             {current ? (
               <>
-                <h2>{current.label || names[current.kind]}</h2>
+                <h2>{designElementLabel(current)}</h2>
                 {current.calendar && current.kind === "text" && (
-                  <p className="hint">
-                    Este campo usa fechas automáticas. Aquí ves un marcador; la
-                    vista previa y el PDF muestran la fecha de cada página.
-                  </p>
+                  <p className="hint">{t("editor.dynamicHint")}</p>
                 )}
                 {current.kind === "text" && (
                   <>
                     <label>
-                      Contenido
+                      {t("editor.content")}
                       <textarea
                         value={current.text}
                         onChange={(e) => patch({ text: e.target.value })}
                       />
                     </label>
                     <label>
-                      Tipografía
+                      {t("editor.font")}
                       <select
                         value={current.font}
                         onChange={(e) =>
@@ -794,12 +791,12 @@ export default function PageDesigner({
                           })
                         }
                       >
-                        <option value="sans-serif">Sans serif</option>
-                        <option value="serif">Serif</option>
+                        <option value="sans-serif">{t("font.sans")}</option>
+                        <option value="serif">{t("font.serif")}</option>
                       </select>
                     </label>
                     <label>
-                      Tamaño del texto
+                      {t("editor.fontSize")}
                       <input
                         type="number"
                         min="8"
@@ -820,7 +817,7 @@ export default function PageDesigner({
                 {current.kind === "writing" && (
                   <>
                     <label>
-                      Tipo de área
+                      {t("writing.type")}
                       <select
                         value={current.writingStyle ?? "lines"}
                         onChange={(e) =>
@@ -829,12 +826,12 @@ export default function PageDesigner({
                           })
                         }
                       >
-                        <option value="lines">Líneas</option>
-                        <option value="grid">Cuadrícula</option>
+                        <option value="lines">{t("writing.lines")}</option>
+                        <option value="grid">{t("writing.grid")}</option>
                       </select>
                     </label>
                     <label>
-                      Separación (px)
+                      {t("writing.spacing")}
                       <input
                         type="number"
                         min="4"
@@ -851,7 +848,7 @@ export default function PageDesigner({
                       />
                     </label>
                     <label>
-                      Grosor (px)
+                      {t("writing.stroke")}
                       <input
                         type="number"
                         min="0.25"
@@ -872,7 +869,7 @@ export default function PageDesigner({
                 )}
                 {current.kind !== "image" && (
                   <label>
-                    Color del elemento
+                    {t("editor.color")}
                     <input
                       type="color"
                       value={current.color}
@@ -886,11 +883,11 @@ export default function PageDesigner({
                       <label key={key}>
                         {
                           [
-                            "Posición X",
-                            "Posición Y",
-                            "Ancho",
-                            "Alto",
-                            "Giro (°)",
+                            t("editor.x"),
+                            t("editor.y"),
+                            t("editor.width"),
+                            t("editor.height"),
+                            t("editor.rotation"),
                           ][i]
                         }
                         <input
@@ -952,7 +949,7 @@ export default function PageDesigner({
                       select(copy.id);
                     }}
                   >
-                    Duplicar
+                    {t("action.duplicate")}
                   </button>
                   <button
                     className="secondary"
@@ -966,28 +963,26 @@ export default function PageDesigner({
                       select(null);
                     }}
                   >
-                    Eliminar
+                    {t("action.delete")}
                   </button>
                   <button
                     disabled={design.elements.at(-1)?.id === selected}
                     onClick={() => moveLayer(1)}
                   >
-                    Hacia delante
+                    {t("editor.forward")}
                   </button>
                   <button
                     disabled={design.elements[0]?.id === selected}
                     onClick={() => moveLayer(-1)}
                   >
-                    Hacia atrás
+                    {t("editor.backward")}
                   </button>
                 </div>
               </>
             ) : (
-              <p className="hint">
-                Añade un elemento o selecciona una capa para editarla.
-              </p>
+              <p className="hint">{t("editor.selectHint")}</p>
             )}
-            <h2>Capas</h2>
+            <h2>{t("editor.layers")}</h2>
             <div className="designer-layers">
               {[...design.elements]
                 .filter((e) => !e.calendar || design.showCalendar)
@@ -998,8 +993,8 @@ export default function PageDesigner({
                     aria-pressed={selected === e.id}
                     onClick={() => select(e.id)}
                   >
-                    {e.label || names[e.kind]}
-                    {!e.label && e.kind === "text"
+                    {designElementLabel(e)}
+                    {!e.label && !e.calendar && e.kind === "text"
                       ? ` · ${e.text.slice(0, 28)}`
                       : ""}
                   </button>

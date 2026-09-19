@@ -1,12 +1,8 @@
+import { t as tr, weekdays } from "./i18n";
 import { useRef, useState } from "react";
 import { X, Plus } from "lucide-react";
 import type { Asset } from "./planner";
-import {
-  WEEKDAYS,
-  type Template,
-  type TemplateField,
-  type Rect,
-} from "./template";
+import { type Template, type TemplateField, type Rect } from "./template";
 export default function TemplateEditor({
   asset,
   onChange,
@@ -16,6 +12,7 @@ export default function TemplateEditor({
   onChange: (t: Template) => void;
   onClose: () => void;
 }) {
+  const WEEKDAYS = weekdays();
   const t = asset.template || { fields: [], days: [] };
   const [selection, select] = useState("f0"),
     [weekday, setWeekday] = useState(0),
@@ -44,7 +41,7 @@ export default function TemplateEditor({
   const addField = () => {
     const f: TemplateField = {
       kind,
-      weekday: kind === "month" ? undefined : weekday,
+      weekday: kind === "month" || kind === "year" ? undefined : weekday,
       x: 75,
       y: 110,
       width: kind === "number" ? 30 : 140,
@@ -86,46 +83,50 @@ export default function TemplateEditor({
         className="template-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Ajustar fechas de la plantilla"
+        aria-label={tr("template.title")}
       >
         <header>
           <div>
-            <strong>Ajustar fechas de la plantilla</strong>
+            <strong>{tr("template.title")}</strong>
             <p>{asset.name}</p>
           </div>
           <button
             ref={closeRef}
             autoFocus
             onClick={onClose}
-            aria-label="Cerrar editor de plantilla"
+            aria-label={tr("template.close")}
           >
             <X size={20} />
           </button>
         </header>
         <div className="template-editor-body">
           <div className="template-editor-controls">
-            <p>
-              Selecciona un campo y dibuja sobre el texto original para cubrirlo
-              y sustituirlo. Las zonas de día delimitan qué borrar al cambiar de
-              mes.
-            </p>
+            <p>{tr("template.instructions")}</p>
             <label>
-              Campo o zona
+              {tr("template.fieldOrArea")}
               <select
-                aria-label="Campo o zona"
+                aria-label={tr("template.fieldOrArea")}
                 value={selection}
                 onChange={(e) => select(e.target.value)}
               >
                 {t.fields.map((f, i) => (
                   <option key={`f${i}`} value={`f${i}`}>
-                    {f.kind === "month"
-                      ? "Mes"
-                      : `${f.kind === "number" ? "Número" : "Día"} · ${WEEKDAYS[f.weekday ?? 0]}`}
+                    {f.kind === "year"
+                      ? tr("calendar.year")
+                      : f.kind === "month"
+                        ? tr("calendar.month")
+                        : tr("template.fieldLabel", {
+                            field:
+                              f.kind === "number"
+                                ? tr("calendar.number")
+                                : tr("calendar.day"),
+                            day: WEEKDAYS[f.weekday ?? 0],
+                          })}
                   </option>
                 ))}
                 {t.days.map((d, i) => (
                   <option key={`d${i}`} value={`d${i}`}>
-                    Zona · {WEEKDAYS[d.weekday]}
+                    {tr("template.areaLabel", { day: WEEKDAYS[d.weekday] })}
                   </option>
                 ))}
               </select>
@@ -135,7 +136,8 @@ export default function TemplateEditor({
                 <div className="rect-inputs">
                   {(["x", "y", "width", "height"] as const).map((k, i) => (
                     <label key={k}>
-                      {["X", "Y", "Ancho", "Alto"][i]} (%)
+                      {["X", "Y", tr("editor.width"), tr("editor.height")][i]}{" "}
+                      (%)
                       <input
                         type="number"
                         min={k === "width" || k === "height" ? 0.1 : 0}
@@ -175,7 +177,7 @@ export default function TemplateEditor({
                 {field && (
                   <>
                     <label>
-                      Tipografía
+                      {tr("editor.font")}
                       <select
                         value={field.font}
                         onChange={(e) =>
@@ -184,12 +186,12 @@ export default function TemplateEditor({
                           })
                         }
                       >
-                        <option value="serif">Serif</option>
-                        <option value="sans-serif">Sans serif</option>
+                        <option value="serif">{tr("font.serif")}</option>
+                        <option value="sans-serif">{tr("font.sans")}</option>
                       </select>
                     </label>
                     <label>
-                      Tamaño del texto
+                      {tr("editor.fontSize")}
                       <input
                         type="number"
                         min="4"
@@ -208,18 +210,18 @@ export default function TemplateEditor({
                     </label>
                     <div className="rect-inputs">
                       <label>
-                        Texto
+                        {tr("element.text")}
                         <input
-                          aria-label="Color del texto de plantilla"
+                          aria-label={tr("template.textColor")}
                           type="color"
                           value={field.color}
                           onChange={(e) => replace({ color: e.target.value })}
                         />
                       </label>
                       <label>
-                        Fondo que tapa el original
+                        {tr("template.coverBackground")}
                         <input
-                          aria-label="Fondo del campo"
+                          aria-label={tr("template.fieldBackground")}
                           type="color"
                           value={field.background}
                           onChange={(e) =>
@@ -246,13 +248,13 @@ export default function TemplateEditor({
                     select("f0");
                   }}
                 >
-                  Eliminar {isDay ? "zona" : "campo"}
+                  {tr(isDay ? "template.deleteArea" : "template.deleteField")}
                 </button>
               </>
             )}
             <hr />
             <label>
-              Día de la semana
+              {tr("template.weekday")}
               <select
                 value={weekday}
                 onChange={(e) => setWeekday(+e.target.value)}
@@ -265,16 +267,17 @@ export default function TemplateEditor({
               </select>
             </label>
             <label>
-              Nuevo campo
+              {tr("template.newField")}
               <select
                 value={kind}
                 onChange={(e) =>
                   setKind(e.target.value as TemplateField["kind"])
                 }
               >
-                <option value="number">Número</option>
-                <option value="weekday">Nombre del día</option>
-                <option value="month">Mes</option>
+                <option value="number">{tr("calendar.number")}</option>
+                <option value="weekday">{tr("template.weekdayName")}</option>
+                <option value="month">{tr("calendar.month")}</option>
+                <option value="year">{tr("calendar.year")}</option>
               </select>
             </label>
             <button
@@ -283,7 +286,7 @@ export default function TemplateEditor({
               disabled={t.fields.length >= 30}
             >
               <Plus size={15} />
-              Añadir campo
+              {tr("template.addField")}
             </button>
             <button
               className="secondary"
@@ -305,7 +308,7 @@ export default function TemplateEditor({
               }}
             >
               <Plus size={15} />
-              Añadir zona de día
+              {tr("template.addArea")}
             </button>
           </div>
           <div className="template-editor-canvas">
@@ -356,7 +359,7 @@ export default function TemplateEditor({
               <img
                 src={asset.data}
                 draggable={false}
-                alt="Plantilla original: dibuja la zona del campo seleccionado"
+                alt={tr("template.sourceAlt")}
               />
               {t.fields.map((f, i) => (
                 <div
@@ -385,11 +388,9 @@ export default function TemplateEditor({
           </div>
         </div>
         <footer>
-          <span>
-            Los ajustes se aplican a todas las páginas que usan esta plantilla.
-          </span>
+          <span>{tr("template.applyHint")}</span>
           <button className="primary" onClick={onClose}>
-            Ver resultado
+            {tr("template.result")}
           </button>
         </footer>
       </div>

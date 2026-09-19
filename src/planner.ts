@@ -1,3 +1,11 @@
+import {
+  translate,
+  translator,
+  locale,
+  weekdays,
+  getLanguage,
+  type Language,
+} from "./i18n";
 import { renderDesign, type Design } from "./design";
 import {
   templateFor,
@@ -5,7 +13,6 @@ import {
   displayDays,
   renderTemplate,
   validTemplate,
-  WEEKDAYS,
   type Template,
 } from "./template";
 export type Layout = "day" | "week" | "spread";
@@ -17,6 +24,7 @@ export type Asset = {
 };
 export type Project = {
   version: 1;
+  language?: Language;
   title: string;
   start: string;
   end: string;
@@ -43,9 +51,10 @@ export type Page = {
   month?: string;
 };
 export const today = () => new Date().toLocaleDateString("sv-SE");
-export const defaults = (): Project => ({
+export const defaults = (language: Language = "es"): Project => ({
+  language,
   version: 1,
-  title: "Mi agenda",
+  title: translate("project.defaultTitle", {}, language),
   start: `${new Date().getFullYear()}-01-01`,
   end: `${new Date().getFullYear()}-12-31`,
   layout: "spread",
@@ -69,6 +78,7 @@ export const addDays = (s: string, n: number) => {
   return key(d);
 };
 export function validate(p: Project) {
+  const t = translator(p.language);
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(p.start) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(p.end) ||
@@ -77,10 +87,10 @@ export function validate(p: Project) {
     key(date(p.start)) !== p.start ||
     key(date(p.end)) !== p.end
   )
-    return "Introduce fechas válidas.";
-  if (p.end < p.start) return "La fecha final debe ser posterior a la inicial.";
+    return t("validation.dates");
+  if (p.end < p.start) return t("validation.order");
   if (+date(p.end) - +date(p.start) > 731 * 86400000)
-    return "Puedes crear hasta dos años de agenda a la vez.";
+    return t("validation.range");
   return "";
 }
 export function pages(p: Project): Page[] {
@@ -179,8 +189,11 @@ export const assetFor = (p: Project, page: Page) =>
               : "inside"
       ] ||
       (page.kind === "inside" ? p.assets.inside : undefined);
-export const format = (s: string, opts: Intl.DateTimeFormatOptions) =>
-  date(s).toLocaleDateString("es-ES", { ...opts, timeZone: "UTC" });
+export const format = (
+  s: string,
+  opts: Intl.DateTimeFormatOptions,
+  language: Language = getLanguage(),
+) => date(s).toLocaleDateString(locale(language), { ...opts, timeZone: "UTC" });
 const esc = (s: string) =>
   s.replace(
     /[&<>"']/g,
@@ -252,6 +265,9 @@ export function monthCells(month: string) {
   return cells;
 }
 export function monthlySvg(p: Project, month: string): string {
+  const t = translator(p.language);
+  const fmt = (s: string, opts: Intl.DateTimeFormatOptions) =>
+    format(s, opts, p.language ?? "es");
   const fields = p.assets.inside?.template?.fields;
   const style =
     fields?.find((f) => f.kind === "month") ||
@@ -277,17 +293,17 @@ export function monthlySvg(p: Project, month: string): string {
   // Lay out on a 1050 × 740 canvas, then rotate onto the portrait sheet.
   let body =
     '<rect width="740" height="1050" fill="white"/><g transform="translate(740 0) rotate(90)">';
-  body += text(x, 82, format(`${month}-01`, { month: "long" }), 32);
+  body += text(x, 82, fmt(`${month}-01`, { month: "long" }), 32);
   body += text(920, 82, month.slice(0, 4), 22);
   body += `<line x1="${x}" y1="104" x2="${x + width}" y2="104" stroke="${color}" stroke-opacity="0.65"/>`;
   [
-    "Lunes",
-    "Martes",
-    "Miércoles",
-    "Jueves",
-    "Viernes",
-    "Sábado",
-    "Domingo",
+    t("calendar.monday"),
+    t("calendar.tuesday"),
+    t("calendar.wednesday"),
+    t("calendar.thursday"),
+    t("calendar.friday"),
+    t("calendar.saturday"),
+    t("calendar.sunday"),
   ].forEach((d, i) => {
     body += text(x + i * cellWidth + 9, 149, d, 15);
   });
@@ -310,7 +326,7 @@ export function monthlySvg(p: Project, month: string): string {
       );
   });
   if (cells.some((d) => d.startsWith(month) && (d < p.start || d > p.end)))
-    body += text(x, 705, "Los días fuera del intervalo aparecen en gris.", 12);
+    body += text(x, 705, t("calendar.outsideRange"), 12);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</g></svg>`;
 }
 export function svg(
@@ -319,6 +335,10 @@ export function svg(
   includeNotes = true,
   placeholders = false,
 ): string {
+  const t = translator(p.language);
+  const fmt = (s: string, opts: Intl.DateTimeFormatOptions) =>
+    format(s, opts, p.language ?? "es");
+  const WEEKDAYS = weekdays(p.language ?? "es");
   if (page.kind === "monthly") return monthlySvg(p, page.month!);
   const asset = assetFor(p, page);
   const text = (
@@ -335,6 +355,7 @@ export function svg(
     body += renderDesign(
       asset.design,
       placeholders ? undefined : { project: p, page },
+      p.language ?? "es",
     );
   else if (asset)
     body += `<image href="${esc(asset.data)}" width="740" height="1050" preserveAspectRatio="${asset.template ? "none" : "xMidYMid slice"}"/>`;
@@ -343,7 +364,7 @@ export function svg(
   if (page.kind !== "inside" && !asset) {
     body += `<rect x="40" y="40" width="660" height="970" fill="none" stroke="${p.color}" stroke-width="2"/>`;
     if (page.kind === "front") {
-      body += text(80, 150, "AGENDA", 18, p.color, 600);
+      body += text(80, 150, t("calendar.agenda"), 18, p.color, 600);
       wrap(p.title, 24)
         .slice(0, 5)
         .forEach((line, i) => {
@@ -352,7 +373,7 @@ export function svg(
       body += text(
         80,
         820,
-        `${format(p.start, { month: "long", year: "numeric" })} — ${format(p.end, { month: "long", year: "numeric" })}`,
+        `${fmt(p.start, { month: "long", year: "numeric" })} — ${fmt(p.end, { month: "long", year: "numeric" })}`,
         18,
       );
     } else body += text(80, 920, p.title.slice(0, 55), 20, p.color);
@@ -371,8 +392,8 @@ export function svg(
       (p.margin / 100) * 740,
       Math.max(27, (p.top / 100) * 1050 - 24),
       placeholders
-        ? "Mes YYYY"
-        : format(page.month ? `${page.month}-01` : page.days[0], {
+        ? t("calendar.monthYear")
+        : fmt(page.month ? `${page.month}-01` : page.days[0], {
             month: "long",
             year: "numeric",
           }),
@@ -390,8 +411,13 @@ export function svg(
         box.x,
         box.y + 27,
         placeholders
-          ? `${p.layout === "day" ? "Día" : WEEKDAYS[(date(box.day).getUTCDay() + 6) % 7]} XX`
-          : format(box.day, {
+          ? t("calendar.dayNumber", {
+              day:
+                p.layout === "day"
+                  ? t("calendar.day")
+                  : WEEKDAYS[(date(box.day).getUTCDay() + 6) % 7],
+            })
+          : fmt(box.day, {
               weekday: "long",
               day: "numeric",
               month: "short",
@@ -430,6 +456,7 @@ export function validProject(value: unknown): value is Project {
     (a.template === undefined || validTemplate(a.template));
   return (
     p.version === 1 &&
+    (p.language === undefined || p.language === "es" || p.language === "en") &&
     typeof p.title === "string" &&
     p.title.length <= 120 &&
     ["day", "week", "spread"].includes(p.layout) &&
