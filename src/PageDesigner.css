@@ -37,7 +37,7 @@
   cursor: pointer;
 }
 .designer-upload:focus-within {
-  outline: 2px solid #b45309;
+  outline: 2px solid #2563eb;
 }
 .designer-body {
   display: grid;
@@ -74,10 +74,10 @@
   border: 1px solid transparent;
 }
 .designer-element:hover {
-  border-color: #b4530980;
+  border-color: #2563eb80;
 }
 .designer-element.selected {
-  outline: 2px solid #b45309;
+  outline: 2px solid #2563eb;
 }
 .designer-resize {
   position: absolute;
@@ -86,7 +86,7 @@
   width: 14px;
   height: 14px;
   background: white;
-  border: 2px solid #b45309;
+  border: 2px solid #2563eb;
   cursor: nwse-resize;
 }
 .designer-properties {
@@ -130,8 +130,8 @@
   overflow-wrap: anywhere;
 }
 .designer-layers button[aria-pressed="true"] {
-  background: #fff7ed;
-  color: #92400e;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 .designer-tip {
   font-size: 12px;
@@ -222,10 +222,10 @@
   user-select: none;
 }
 .designer-element:hover {
-  outline: 1px solid #b4530980;
+  outline: 1px solid #2563eb80;
 }
 .designer-element.selected {
-  outline: 2px solid #b45309;
+  outline: 2px solid #2563eb;
 }
 .designer-element-art {
   display: block;
@@ -246,7 +246,7 @@
   stroke-width: 1;
 }
 .alignment-guide {
-  stroke: #b45309;
+  stroke: #2563eb;
   stroke-dasharray: 5 4;
 }
 .distance-guide line {
@@ -260,11 +260,11 @@
   stroke-linejoin: round;
 }
 .distance-guide.equal line {
-  stroke: #b45309;
+  stroke: #2563eb;
   stroke-width: 1.5;
 }
 .distance-guide.equal text {
-  fill: #92400e;
+  fill: #1d4ed8;
   font-weight: 600;
 }
 @media (max-width: 640px) {
