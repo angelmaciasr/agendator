@@ -435,7 +435,7 @@ function App() {
                 )}
                 <p className="hint">
                   Semanas de lunes a domingo, cortadas al terminar cada mes. Los
-                  días del otro mes quedan en blanco.
+                  días del mes siguiente completan la semana en un tono muy tenue.
                 </p>
                 <button
                   className="primary next"

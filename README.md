@@ -16,7 +16,7 @@ Abre la dirección que muestra Vite (normalmente http://localhost:5173). La inst
 ## Crear una agenda con tus plantillas
 
 1. Elige el intervalo de fechas y el formato: día por página, semana por página o semana en dos caras.
-   Puedes activar **Añadir vista mensual al inicio de cada mes**: inserta un calendario completo de lunes a domingo antes de las páginas de cada mes, incluido el primero. Los días fuera del intervalo aparecen en gris. En formato de dos caras se añade una cara en blanco junto a cada vista mensual para conservar las parejas de plantillas. Esta vista utiliza un diseño de cuadrícula generado por la aplicación.
+   Puedes activar **Añadir vista mensual al inicio de cada mes**: inserta un calendario completo de lunes a domingo antes de las páginas de cada mes, incluido el primero. Los días fuera del intervalo aparecen en gris. En formato de dos caras se añade una cara en blanco junto a cada vista mensual para conservar las parejas de plantillas. Esta vista utiliza una cuadrícula apaisada girada 90° en sentido horario sobre la hoja. La última semana se completa con los días del mes siguiente en un tono muy tenue.
 2. Sube las imágenes PNG, JPEG o WebP (hasta 15 MB cada una). En dos caras, carga una plantilla izquierda y otra derecha. Portada y contraportada son opcionales.
 3. La aplicación reconoce los días y sus números, el mes y las zonas delimitadas por líneas. Para las plantillas de cuatro días a la izquierda y tres a la derecha, selecciona automáticamente lunes–jueves / viernes–domingo.
 4. Revisa la vista previa. En **Ajustar fechas** puedes corregir las posiciones dibujando un rectángulo sobre el texto original, ajustar tamaño, tipografía y colores, y añadir campos que no se hayan reconocido. Las zonas de día delimitan qué se deja en blanco al cortar un mes.
@@ -24,11 +24,11 @@ Abre la dirección que muestra Vite (normalmente http://localhost:5173). La inst
 
 El botón **Cargar las dos plantillas de ejemplo** utiliza las dos imágenes de referencia incluidas en `public/templates/`: cuatro días en la izquierda, tres en la derecha y las secciones originales «Importante» y «Notas».
 
-Las semanas se cortan al cambiar de mes. Las posiciones del otro mes se dejan en blanco y ese mes continúa en otra página o pareja de caras. La vista previa permite ver una página o dos enfrentadas; portada y contraportada se muestran solas.
+Las semanas se cortan al cambiar de mes. Al terminar el mes, los días del siguiente completan la semana con fechas y zonas muy tenues; ese mes continúa en otra página o pareja de caras con su intensidad normal. Las posiciones del mes anterior siguen en blanco. La vista previa permite ver una página o dos enfrentadas; portada y contraportada se muestran solas.
 
 ## Qué se conserva y qué se sustituye
 
-La imagen de plantilla se conserva como fondo. Se cubren únicamente los campos de texto identificados con su color de fondo y se dibujan los datos del calendario encima, sin añadir otro calendario ni nuevas líneas sobre la plantilla. Las zonas de días fuera del mes o intervalo se cubren de blanco. Los bloques originales de «Importante» y «Notas» siguen formando parte del diseño.
+La imagen de plantilla se conserva como fondo. Se cubren únicamente los campos de texto identificados con su color de fondo y se dibujan los datos del calendario encima, sin añadir otro calendario ni nuevas líneas sobre la plantilla. Las zonas del mes anterior o fuera del intervalo se cubren de blanco; los días del mes siguiente que completan la semana se muestran al 20% de intensidad. Los bloques originales de «Importante» y «Notas» siguen formando parte del diseño.
 
 El reconocimiento utiliza [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/docs/api.md) en el navegador y está pensado para nombres de días y meses en español. No garantiza reconocer todos los diseños: conviene revisar las zonas, especialmente si hay columnas, fondos decorados, texto poco legible o tipografías inusuales. Puedes definir manualmente todos los campos y zonas. La sustitución usa una tipografía serif o sans serif ajustable; no extrae la fuente de una imagen. Los colores de fondo planos pueden ajustarse; no se reconstruyen texturas detrás de los textos.
 

@@ -1,6 +1,7 @@
 import {
   templateFor,
   dateForWeekday,
+  displayDays,
   renderTemplate,
   validTemplate,
   type Template,
@@ -29,6 +30,8 @@ export type Page = {
   id: string;
   kind: "front" | "back" | "inside" | "blank" | "monthly";
   days: string[];
+  // Next-month context in the same weekday slots; never duplicates active dates.
+  trailingDays?: string[];
   side?: "left" | "right";
   month?: string;
 };
@@ -92,14 +95,24 @@ export function pages(p: Project): Page[] {
       ];
       for (const month of months) {
         const days = week.map((day) => (day.startsWith(month) ? day : ""));
+        const trailingDays = week.map((day) =>
+          day.slice(0, 7) > month ? day : "",
+        );
         if (p.layout === "week")
-          out.push({ id: `week-${d}-${month}`, kind: "inside", days, month });
+          out.push({
+            id: `week-${d}-${month}`,
+            kind: "inside",
+            days,
+            trailingDays,
+            month,
+          });
         else
           out.push(
             {
               id: `left-${d}-${month}`,
               kind: "inside",
               days: days.slice(0, p.spreadSplit ?? 3),
+              trailingDays: trailingDays.slice(0, p.spreadSplit ?? 3),
               side: "left",
               month,
             },
@@ -107,6 +120,7 @@ export function pages(p: Project): Page[] {
               id: `right-${d}-${month}`,
               kind: "inside",
               days: days.slice(p.spreadSplit ?? 3),
+              trailingDays: trailingDays.slice(p.spreadSplit ?? 3),
               side: "right",
               month,
             },
@@ -207,7 +221,7 @@ export function dayBoxes(p: Project, page: Page) {
   const y = (p.top / 100) * 1050;
   const height =
     (1050 - y - (p.bottom / 100) * 1050) / Math.max(page.days.length, 1);
-  return page.days.map((day, i) => ({
+  return displayDays(page).map((day, i) => ({
     day,
     x,
     y: y + i * height,
@@ -226,6 +240,8 @@ export function monthCells(month: string) {
   days.forEach((d, i) => {
     cells[offset + i] = d;
   });
+  for (let i = offset + days.length; i < cells.length; i++)
+    cells[i] = addDays(first, i - offset);
   return cells;
 }
 export function monthlySvg(p: Project, month: string): string {
@@ -238,9 +254,9 @@ export function monthlySvg(p: Project, month: string): string {
   const cells = monthCells(month),
     rows = cells.length / 7;
   const x = 66,
-    y = 190,
-    width = 608,
-    height = 720,
+    y = 166,
+    width = 918,
+    height = 508,
     cellWidth = width / 7,
     cellHeight = height / rows;
   const text = (
@@ -251,10 +267,12 @@ export function monthlySvg(p: Project, month: string): string {
     fill = color,
   ) =>
     `<text x="${tx}" y="${ty}" font-family="${font}" font-size="${size}" fill="${fill}">${esc(value)}</text>`;
-  let body = '<rect width="740" height="1050" fill="white"/>';
-  body += text(x, 96, format(`${month}-01`, { month: "long" }), 32);
-  body += text(610, 96, month.slice(0, 4), 22);
-  body += `<line x1="${x}" y1="118" x2="${x + width}" y2="118" stroke="${color}" stroke-opacity="0.65"/>`;
+  // Lay out on a 1050 × 740 canvas, then rotate onto the portrait sheet.
+  let body =
+    '<rect width="740" height="1050" fill="white"/><g transform="translate(740 0) rotate(90)">';
+  body += text(x, 82, format(`${month}-01`, { month: "long" }), 32);
+  body += text(920, 82, month.slice(0, 4), 22);
+  body += `<line x1="${x}" y1="104" x2="${x + width}" y2="104" stroke="${color}" stroke-opacity="0.65"/>`;
   [
     "Lunes",
     "Martes",
@@ -264,7 +282,7 @@ export function monthlySvg(p: Project, month: string): string {
     "Sábado",
     "Domingo",
   ].forEach((d, i) => {
-    body += text(x + i * cellWidth + 7, 173, d, 13);
+    body += text(x + i * cellWidth + 9, 149, d, 15);
   });
   for (let r = 0; r <= rows; r++)
     body += `<line x1="${x}" y1="${y + r * cellHeight}" x2="${x + width}" y2="${y + r * cellHeight}" stroke="${color}" stroke-opacity="0.4"/>`;
@@ -277,12 +295,16 @@ export function monthlySvg(p: Project, month: string): string {
         y + Math.floor(i / 7) * cellHeight + 26,
         String(Number(d.slice(-2))),
         17,
-        d < p.start || d > p.end ? "#c4c4c4" : color,
+        !d.startsWith(month)
+          ? "#dddddd"
+          : d < p.start || d > p.end
+            ? "#c4c4c4"
+            : color,
       );
   });
-  if (cells.some((d) => d && (d < p.start || d > p.end)))
-    body += text(x, 950, "Los días fuera del intervalo aparecen en gris.", 12);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</svg>`;
+  if (cells.some((d) => d.startsWith(month) && (d < p.start || d > p.end)))
+    body += text(x, 705, "Los días fuera del intervalo aparecen en gris.", 12);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</g></svg>`;
 }
 export function svg(p: Project, page: Page, includeNotes = true): string {
   if (page.kind === "monthly") return monthlySvg(p, page.month!);
@@ -334,14 +356,16 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
     );
     for (const box of dayBoxes(p, page)) {
       if (!box.day) continue;
-      const active = box.day >= p.start && box.day <= p.end;
+      const trailing = !!page.month && !box.day.startsWith(page.month);
+      const active = !trailing && box.day >= p.start && box.day <= p.end;
+      if (trailing) body += '<g opacity="0.2">';
       body += `<line x1="${box.x}" y1="${box.y}" x2="${box.x + box.width}" y2="${box.y}" stroke="${p.color}" stroke-width="1"/>`;
       body += text(
         box.x,
         box.y + 27,
         format(box.day, { weekday: "long", day: "numeric", month: "short" }),
         17,
-        active ? p.color : "#777777",
+        active || trailing ? p.color : "#777777",
         600,
       );
       const maxLines = Math.max(0, Math.floor((box.height - 50) / 20));
@@ -356,6 +380,7 @@ export function svg(p: Project, page: Page, includeNotes = true): string {
       }
       if (lines.length > maxLines && maxLines)
         body += text(box.x + box.width - 20, box.y + box.height - 9, "…", 16);
+      if (trailing) body += "</g>";
     }
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="740" height="1050" viewBox="0 0 740 1050">${body}</svg>`;

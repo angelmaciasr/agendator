@@ -58,7 +58,7 @@ test("backup validation and SVG escaping", () => {
   assert.ok(svg(p, pages(p)[0]).includes("&lt;script&gt;"));
   assert.ok(!validProject({ ...p, margin: Infinity }));
 });
-test("month boundary splits the week and leaves the other month blank", () => {
+test("month boundary preserves active dates and adds faint next-month dates", () => {
   for (const layout of ["week", "spread"] as Layout[]) {
     const p = { ...defaults(), start: "2028-02-28", end: "2028-03-05", layout };
     const inside = pages(p).filter((p) => p.kind === "inside");
@@ -175,6 +175,7 @@ test("template replaces dates in place without a second calendar and validates m
       ...pages(p)[1],
       days: ["2026-09-28", "2026-09-29", "2026-09-30", ""],
       month: "2026-09",
+      trailingDays: [],
     },
     t,
     false,
@@ -228,7 +229,8 @@ test("monthly grid aligns weekdays and handles leap years and six-row months", a
   const { monthCells } = await import("../src/planner.ts");
   const feb = monthCells("2024-02");
   assert.deepEqual(feb.slice(0, 4), ["", "", "", "2024-02-01"]);
-  assert.equal(feb.filter(Boolean).length, 29);
+  assert.equal(feb.filter((d) => d.startsWith("2024-02")).length, 29);
+  assert.deepEqual(feb.slice(-3), ["2024-03-01", "2024-03-02", "2024-03-03"]);
   assert.ok(feb.includes("2024-02-29"));
   assert.equal(monthCells("2021-02").length, 28);
   assert.equal(monthCells("2026-03").length, 42);
@@ -246,8 +248,34 @@ test("monthly grid aligns weekdays and handles leap years and six-row months", a
   assert.ok(output.includes("febrero</text>"));
   assert.ok(output.includes("2024</text>"));
   assert.ok(output.includes("#c4c4c4"));
+  assert.ok(output.includes('transform="translate(740 0) rotate(90)"'));
+  assert.ok(output.includes('fill="#dddddd">1</text>'));
   assert.ok(!output.includes("<image"));
   assert.ok(
     !svg(p, { kind: "blank", days: [], id: "blank" }).includes("<image"),
   );
 });
+
+for (const layout of ["week", "spread"] as Layout[])
+  for (const spreadSplit of [3, 4] as const)
+    test(`${layout}/${spreadSplit}: next-month context crosses year boundaries without duplicating notes`, async () => {
+      const { displayDays, renderTemplate } = await import("../src/template.ts");
+      const p = { ...defaults(), layout, spreadSplit, start: "2026-12-28", end: "2027-01-03", notes: { "2027-01-01": "Solo en enero" } };
+      const all = pages(p).filter((page) => page.kind === "inside");
+      const december = all.filter((page) => page.month === "2026-12");
+      assert.deepEqual(december.flatMap(displayDays), ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03"]);
+      const context = december.find((page) => displayDays(page).includes("2027-01-01"))!;
+      assert.ok(svg(p, context).includes('<g opacity="0.2">'));
+      assert.ok(!svg(p, context).includes("Solo en enero"));
+      const january = all.find((page) => page.days.includes("2027-01-01"))!;
+      assert.ok(svg(p, january).includes("Solo en enero"));
+      const field = { x: 50, y: 100, width: 120, height: 30, fontSize: 20, color: "#777777", background: "#ffffff", font: "serif" as const, align: "left" as const, weekday: 4 };
+      const template = { fields: [{ ...field, kind: "number" as const }, { ...field, y: 140, kind: "weekday" as const }], days: [{ weekday: 4, area: { x: 50, y: 100, width: 600, height: 200 } }] };
+      for (const end of [p.end, "2026-12-31"]) {
+        const output = renderTemplate({ ...p, end }, context, template, true);
+        assert.ok(output.includes('opacity="0.2">1</text>'));
+        assert.ok(output.includes('opacity="0.2">Viernes</text>'));
+        assert.ok(output.includes('fill="#ffffff" opacity="0.8"'));
+        assert.ok(!output.includes("Solo en enero"));
+      }
+    });

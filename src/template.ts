@@ -28,10 +28,12 @@ export const templateFor = (p: Project, page: Page) => {
       : p.assets.inside);
   return page.kind === "inside" ? asset?.template : undefined;
 };
+export const displayDays = (page: Page) =>
+  page.days.map((day, i) => day || page.trailingDays?.[i] || "");
 export const dateForWeekday = (page: Page, weekday: number) =>
   page.days.length === 1 && !page.month
     ? page.days[0]
-    : page.days.find(
+    : displayDays(page).find(
         (d) =>
           d && (new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7 === weekday,
       );
@@ -53,14 +55,16 @@ export function renderTemplate(
   t: Template,
   includeNotes: boolean,
 ) {
-  const rect = (r: Rect, color: string) =>
-    `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${color}"/>`;
+  const rect = (r: Rect, color: string, opacity = 1) =>
+    `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${color}" opacity="${opacity}"/>`;
+  const isTrailing = (d: string) => !!page.month && !d.startsWith(page.month);
   let out = "";
   // Remove old dates first; preserve every other part of the uploaded artwork.
   for (const f of t.fields) out += rect(f, f.background);
   for (const day of t.days) {
     const d = dateForWeekday(page, day.weekday);
-    if (!d || d < p.start || d > p.end) out += rect(day.area, "#ffffff");
+    if (d && isTrailing(d)) out += rect(day.area, "#ffffff", 0.8);
+    else if (!d || d < p.start || d > p.end) out += rect(day.area, "#ffffff");
   }
   for (const [i, f] of t.fields.entries()) {
     const d =
@@ -69,7 +73,9 @@ export function renderTemplate(
           ? `${page.month}-01`
           : page.days.find(Boolean)
         : dateForWeekday(page, f.weekday ?? 0);
-    if (!d || (f.kind !== "month" && (d < p.start || d > p.end))) continue;
+    const trailing = !!d && f.kind !== "month" && isTrailing(d);
+    if (!d || (f.kind !== "month" && !trailing && (d < p.start || d > p.end)))
+      continue;
     const value =
       f.kind === "month"
         ? new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", {
@@ -80,12 +86,12 @@ export function renderTemplate(
           ? String(Number(d.slice(-2)))
           : WEEKDAYS[(new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7];
     const x = f.align === "center" ? f.x + f.width / 2 : f.x + 2;
-    out += `<clipPath id="field-${i}">${rect(f, "white")}</clipPath><text clip-path="url(#field-${i})" x="${x}" y="${f.y + f.height / 2}" dominant-baseline="central" text-anchor="${f.align === "center" ? "middle" : "start"}" font-family="${f.font}" font-size="${f.fontSize}" fill="${f.color}">${escapeXml(value)}</text>`;
+    out += `<clipPath id="field-${i}">${rect(f, "white")}</clipPath><text clip-path="url(#field-${i})" x="${x}" y="${f.y + f.height / 2}" dominant-baseline="central" text-anchor="${f.align === "center" ? "middle" : "start"}" font-family="${f.font}" font-size="${f.fontSize}" fill="${f.color}" opacity="${trailing ? 0.2 : 1}">${escapeXml(value)}</text>`;
   }
   if (includeNotes)
     for (const [i, day] of t.days.entries()) {
       const d = dateForWeekday(page, day.weekday);
-      if (!d || d < p.start || d > p.end || !p.notes[d]) continue;
+      if (!d || isTrailing(d) || d < p.start || d > p.end || !p.notes[d]) continue;
       const a = day.area,
         headerBottom = Math.max(
           a.y,

@@ -47,6 +47,9 @@ test("uploaded templates keep their artwork, replace dates, export and start ano
     path: "test-results/template-september.png",
     fullPage: true,
   });
+  await page.getByLabel("Ir a página").selectOption("9");
+  expect(await source(page, 10)).toContain('opacity="0.2">1</text>');
+  await page.screenshot({ path: "test-results/month-transition.png", fullPage: true });
   await page.getByLabel("Ir a página").selectOption("11");
   expect(await source(page, 12)).toContain("octubre</text>");
   expect(await source(page, 12)).toContain("Jueves</text>");
@@ -81,6 +84,8 @@ test("uploaded templates keep their artwork, replace dates, export and start ano
   const monthly = await source(page, 2);
   expect(monthly).toContain("septiembre</text>");
   expect(monthly).toContain("2026</text>");
+  expect(monthly).toContain('transform="translate(740 0) rotate(90)"');
+  expect(monthly).toContain('fill="#dddddd">1</text>');
   expect(monthly).toContain("Domingo</text>");
   expect(monthly).not.toContain("<image");
   await page.getByRole("button", { name: "Dos páginas", exact: true }).click();
